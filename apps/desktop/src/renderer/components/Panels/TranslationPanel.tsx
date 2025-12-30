@@ -1,6 +1,5 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { TranslationResult, TranslationStatus } from '@ricky/shared';
-import { TranslateOverlayView } from '../Translation/TranslateOverlayView';
 
 const LANG_OPTIONS = [
   { value: 'auto', label: 'Auto' },
@@ -16,26 +15,11 @@ export function TranslationPanel(): JSX.Element {
   const [liveInterval, setLiveInterval] = useState(4);
   const [debugBoxes, setDebugBoxes] = useState(false);
   const [showTooltips, setShowTooltips] = useState(false);
+  const [showOverlay, setShowOverlay] = useState(false);
   const [status, setStatus] = useState<TranslationStatus>({ stage: 'idle' });
   const [result, setResult] = useState<TranslationResult | null>(null);
-  const [overlayVisible, setOverlayVisible] = useState(false);
-  const [imageUrl, setImageUrl] = useState<string | null>(null);
-  const [imageSize, setImageSize] = useState<{ width: number; height: number } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [logs, setLogs] = useState<string[]>([]);
-  const imageUrlRef = useRef<string | null>(null);
-
-  useEffect(() => {
-    imageUrlRef.current = imageUrl;
-  }, [imageUrl]);
-
-  useEffect(() => {
-    return () => {
-      if (imageUrlRef.current) {
-        URL.revokeObjectURL(imageUrlRef.current);
-      }
-    };
-  }, []);
 
   useEffect(() => {
     const offStatus = window.translation.onStatus((payload) => {
@@ -46,28 +30,10 @@ export function TranslationPanel(): JSX.Element {
     });
     const offResult = window.translation.onResult(async (payload) => {
       setResult(payload);
-      setOverlayVisible(true);
       setError(null);
-      setImageSize({ width: payload.width, height: payload.height });
-      try {
-        const read = await window.electron?.ipcRenderer.invoke('screenshot:read', {
-          filePath: payload.screenshotPath,
-        });
-        if (read?.buffer) {
-          const blob = new Blob([read.buffer], { type: read.mimeType || 'image/png' });
-          const url = URL.createObjectURL(blob);
-          setImageUrl((prev) => {
-            if (prev) URL.revokeObjectURL(prev);
-            return url;
-          });
-        }
-      } catch (err: any) {
-        setError(err?.message || 'Falha ao carregar imagem');
-      }
     });
     const offError = window.translation.onError((payload) => {
       setError(payload.message);
-      setOverlayVisible(false);
     });
     return () => {
       offStatus();
@@ -76,9 +42,32 @@ export function TranslationPanel(): JSX.Element {
     };
   }, []);
 
+  useEffect(() => {
+    let active = true;
+    const applyOverlay = async () => {
+      const shouldShow = showOverlay && Boolean(result?.blocks?.length);
+      try {
+        await window.translation.setOverlayVisible(shouldShow);
+      } catch (err: any) {
+        if (!active) return;
+        setLogs((prev) => [`Overlay: ${err?.message || 'falha ao alternar'}`, ...prev].slice(0, 8));
+      }
+    };
+    applyOverlay();
+    return () => {
+      active = false;
+    };
+  }, [showOverlay, result?.blocks?.length]);
+
+  useEffect(() => {
+    return () => {
+      window.translation.setOverlayVisible(false).catch(() => undefined);
+    };
+  }, []);
+
   const handleStart = async () => {
     setError(null);
-    await window.translation.start({
+    const options = {
       fromLang,
       toLang,
       liveMode,
@@ -87,12 +76,14 @@ export function TranslationPanel(): JSX.Element {
       showTooltips,
       minConfidence: 35,
       minTextLength: 2,
-    });
+      selectRegion: debugBoxes,
+    };
+    await window.translation.start(options);
   };
 
   const handleStop = async () => {
+    setShowOverlay(false);
     await window.translation.stop();
-    setOverlayVisible(false);
   };
 
   const handleRefresh = async () => {
@@ -123,15 +114,6 @@ export function TranslationPanel(): JSX.Element {
       <div className="panel-header">
         <h3>Tradução</h3>
       </div>
-
-      <TranslateOverlayView
-        imageUrl={imageUrl}
-        imageSize={imageSize}
-        blocks={result?.blocks || []}
-        debugBoxes={debugBoxes}
-        showTooltips={showTooltips}
-        visible={overlayVisible}
-      />
 
       <div className="translation-content" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
@@ -226,11 +208,20 @@ export function TranslationPanel(): JSX.Element {
           <label style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
             <input
               type="checkbox"
+              checked={showOverlay}
+              onChange={(e) => setShowOverlay(e.target.checked)}
+            />
+            Mostrar tradução
+          </label>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <input
+              type="checkbox"
               checked={showTooltips}
               onChange={(e) => setShowTooltips(e.target.checked)}
             />
             Tooltip original/traduzido
           </label>
+          
         </div>
 
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
@@ -260,19 +251,6 @@ export function TranslationPanel(): JSX.Element {
           >
             Exportar JSON
           </button>
-          <button
-            onClick={() => setOverlayVisible((prev) => !prev)}
-            style={{
-              padding: '6px 10px',
-              background: '#2d2d2d',
-              color: '#fff',
-              border: '1px solid #444',
-              borderRadius: 6,
-              cursor: 'pointer',
-            }}
-          >
-            {overlayVisible ? 'Ocultar overlay' : 'Mostrar overlay'}
-          </button>
         </div>
 
         <div style={{ padding: 10, background: '#1e1e1e', borderRadius: 6, border: '1px solid #333' }}>
@@ -299,6 +277,27 @@ export function TranslationPanel(): JSX.Element {
             logs.map((entry, index) => (
               <div key={index} style={{ fontSize: 12, color: '#d6d6d6' }}>
                 {entry}
+              </div>
+            ))
+          )}
+        </div>
+
+        <div style={{ padding: 10, background: '#0f0f0f', borderRadius: 6, border: '1px solid #2b2b2b' }}>
+          <div style={{ fontSize: 12, color: '#9aa0a6', marginBottom: 6 }}>Tradução</div>
+          {!result?.blocks?.length ? (
+            <div style={{ fontSize: 12, color: '#666' }}>Nenhuma tradução ainda</div>
+          ) : (
+            result.blocks.map((block, index) => (
+              <div key={index} style={{ marginBottom: 8 }}>
+                <div style={{ fontSize: 12, color: '#9aa0a6' }}>{block.original}</div>
+                <div style={{ fontSize: 14, color: '#e6e6e6' }}>{block.translated}</div>
+                {debugBoxes && (
+                  <div style={{ fontSize: 11, color: '#6f6f6f' }}>
+                    {block.screenBbox
+                      ? `tela: ${block.screenBbox.x},${block.screenBbox.y} • ${block.screenBbox.w}x${block.screenBbox.h}`
+                      : `bbox: ${Math.round(block.bbox.x)},${Math.round(block.bbox.y)} • ${Math.round(block.bbox.w)}x${Math.round(block.bbox.h)}`}
+                  </div>
+                )}
               </div>
             ))
           )}

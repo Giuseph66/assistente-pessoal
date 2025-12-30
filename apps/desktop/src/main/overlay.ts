@@ -15,10 +15,7 @@ export class OverlayManager {
   private isVisible: boolean = true;
   private currentContentProtection: boolean | null = null;
   private isLinux: boolean = process.platform === 'linux';
-  private translationBounds: Electron.Rectangle | null = null;
-  private translationWasResizable: boolean | null = null;
-  private translationWasFullScreen: boolean | null = null;
-  private translationWasMaximized: boolean | null = null;
+  private translationWindow: BrowserWindow | null = null;
   private translationApplyTimer: NodeJS.Timeout | null = null;
   
   /**
@@ -33,78 +30,73 @@ export class OverlayManager {
    * Entra no modo de tradução (janela cobre a tela inteira)
    */
   enterTranslationMode(): void {
-    if (!this.overlayWindow) {
-      this.createWindow();
-    }
+    this.ensureTranslationWindow();
+    if (!this.translationWindow) return;
 
-    if (!this.overlayWindow) {
-      return;
-    }
-
-    if (!this.translationBounds) {
-      this.translationBounds = this.overlayWindow.getBounds();
-    }
-
-    if (this.translationWasResizable === null) {
-      this.translationWasResizable = this.overlayWindow.isResizable();
-    }
-    if (this.translationWasFullScreen === null) {
-      this.translationWasFullScreen = this.overlayWindow.isFullScreen();
-    }
-    if (this.translationWasMaximized === null) {
-      this.translationWasMaximized = this.overlayWindow.isMaximized();
-    }
-
-    this.applyTranslationLayout();
+    this.applyTranslationLayout(this.translationWindow);
     if (this.translationApplyTimer) {
       clearTimeout(this.translationApplyTimer);
     }
     this.translationApplyTimer = setTimeout(() => {
-      this.applyTranslationLayout();
+      if (this.translationWindow) {
+        this.applyTranslationLayout(this.translationWindow);
+      }
     }, 150);
+
+    this.translationWindow.show();
+    this.translationWindow.focus();
+  }
+
+  ensureTranslationWindow(): void {
+    if (!this.translationWindow) {
+      this.createTranslationWindow();
+    }
   }
 
   /**
    * Sai do modo de tradução e restaura o tamanho anterior
    */
   exitTranslationMode(): void {
-    if (!this.overlayWindow || !this.translationBounds) return;
     if (this.translationApplyTimer) {
       clearTimeout(this.translationApplyTimer);
       this.translationApplyTimer = null;
     }
-    this.overlayWindow.setBounds(this.translationBounds, true);
-    this.translationBounds = null;
-    if (this.translationWasResizable !== null) {
-      this.overlayWindow.setResizable(this.translationWasResizable);
-      this.translationWasResizable = null;
-    }
-    if (this.translationWasFullScreen !== null) {
-      this.overlayWindow.setFullScreen(this.translationWasFullScreen);
-      this.translationWasFullScreen = null;
-    }
-    if (this.translationWasMaximized !== null) {
-      if (this.translationWasMaximized) {
-        this.overlayWindow.maximize();
-      } else {
-        this.overlayWindow.unmaximize();
-      }
-      this.translationWasMaximized = null;
+    if (this.translationWindow && this.translationWindow.isVisible()) {
+      this.translationWindow.hide();
     }
   }
 
-  private applyTranslationLayout(): void {
-    if (!this.overlayWindow) return;
-    const display = screen.getDisplayMatching(this.overlayWindow.getBounds());
-    this.overlayWindow.setResizable(true);
-    this.overlayWindow.setMaximizable(true);
-    this.overlayWindow.setFullScreenable(true);
-    this.overlayWindow.setBounds(display.bounds, true);
-    this.overlayWindow.setPosition(display.bounds.x, display.bounds.y);
-    this.overlayWindow.setSize(display.bounds.width, display.bounds.height, true);
-    this.overlayWindow.setFullScreen(true);
-    this.overlayWindow.maximize();
-    this.overlayWindow.setAlwaysOnTop(true, 'screen-saver');
+  hideTranslationWindow(): void {
+    if (this.translationWindow && this.translationWindow.isVisible()) {
+      this.translationWindow.hide();
+    }
+  }
+
+  showTranslationWindow(): void {
+    if (!this.translationWindow) {
+      this.createTranslationWindow();
+    }
+    if (!this.translationWindow) return;
+    this.applyTranslationLayout(this.translationWindow);
+    this.translationWindow.show();
+  }
+
+  isTranslationWindowVisible(): boolean {
+    return Boolean(this.translationWindow && this.translationWindow.isVisible());
+  }
+
+  private applyTranslationLayout(target: BrowserWindow): void {
+    const reference = this.overlayWindow ? this.overlayWindow.getBounds() : screen.getPrimaryDisplay().bounds;
+    const display = screen.getDisplayMatching(reference);
+    target.setResizable(true);
+    target.setMaximizable(true);
+    target.setFullScreenable(true);
+    target.setBounds(display.bounds, true);
+    target.setPosition(display.bounds.x, display.bounds.y);
+    target.setSize(display.bounds.width, display.bounds.height, true);
+    target.setFullScreen(true);
+    target.maximize();
+    target.setAlwaysOnTop(true, 'screen-saver');
   }
 
   /**
@@ -197,6 +189,47 @@ export class OverlayManager {
     });
 
     logger.info('Overlay window created');
+  }
+
+  /**
+   * Cria a janela de overlay de tradução (tela cheia)
+   */
+  private createTranslationWindow(): void {
+    if (this.translationWindow) {
+      return;
+    }
+
+    this.translationWindow = new BrowserWindow({
+      width: 800,
+      height: 600,
+      frame: false,
+      transparent: true,
+      alwaysOnTop: true,
+      skipTaskbar: true,
+      resizable: true,
+      movable: false,
+      focusable: true,
+      hasShadow: false,
+      webPreferences: {
+        preload: join(__dirname, '../preload/index.js'),
+        nodeIntegration: false,
+        contextIsolation: true,
+        sandbox: false,
+      },
+      show: false,
+    });
+
+    if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
+      this.translationWindow.loadURL(`${process.env['ELECTRON_RENDERER_URL']}#translation-overlay`);
+    } else {
+      this.translationWindow.loadFile(join(__dirname, '../renderer/index.html'), {
+        hash: 'translation-overlay',
+      });
+    }
+
+    this.translationWindow.on('closed', () => {
+      this.translationWindow = null;
+    });
   }
 
   /**
@@ -479,6 +512,11 @@ export class OverlayManager {
       this.overlayWindow = null;
       this.isVisible = false;
       logger.info('Overlay window destroyed');
+    }
+    if (this.translationWindow) {
+      this.translationWindow.destroy();
+      this.translationWindow = null;
+      logger.info('Translation overlay window destroyed');
     }
   }
 }

@@ -9,6 +9,7 @@ import { RecordingsPanel } from '../Panels/RecordingsPanel';
 import { SettingsContainer } from '../../pages/Settings/SettingsContainer';
 import { DragHandle } from './DragHandle';
 import { SttMicBridge } from '../SttMicBridge';
+import { TranslationOverlayRoot } from '../Translation/TranslationOverlayRoot';
 import './OverlayContainer.css';
 
 type PanelType =
@@ -31,8 +32,9 @@ export function OverlayContainer(): JSX.Element {
   } | null>(null);
   const [displayCount, setDisplayCount] = useState<number>(1);
 
-  // Detecta se está no modo overlay (hash na URL)
-  const isOverlayMode = window.location.hash === '#overlay';
+  const hash = window.location.hash;
+  const isOverlayMode = hash === '#overlay';
+  const isTranslationOverlay = hash === '#translation-overlay';
 
   // Verifica status inicial do overlay
   useEffect(() => {
@@ -157,6 +159,10 @@ export function OverlayContainer(): JSX.Element {
   // No Linux, não mostra botão de pânico (content protection não funciona)
   // Mostra apenas botão de mover monitor se houver múltiplos monitores
   const shouldShowPanicButton = platformInfo?.platform !== 'linux';
+
+  if (isTranslationOverlay) {
+    return <TranslationOverlayRoot />;
+  }
 
   if (!isOverlayMode) {
     return (

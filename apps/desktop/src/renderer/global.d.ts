@@ -116,12 +116,18 @@ declare global {
     };
     translation: {
       start: (options: TranslationStartOptions) => Promise<{ success: boolean }>;
+      prepareSelection: (options: TranslationStartOptions) => Promise<{ success: boolean }>;
+      cancelSelection: () => Promise<{ success: boolean }>;
       stop: () => Promise<{ success: boolean }>;
       refresh: () => Promise<{ success: boolean }>;
       getStatus: () => Promise<TranslationStatus>;
+      getOptions: () => Promise<TranslationStartOptions | null>;
+      setOverlayVisible: (visible: boolean) => Promise<{ success: boolean }>;
       onStatus: (cb: (event: TranslationStatus) => void) => () => void;
       onResult: (cb: (event: TranslationResult) => void) => () => void;
       onError: (cb: (event: { message: string }) => void) => () => void;
+      onSelectRegion: (cb: (event: TranslationStartOptions) => void) => () => void;
+      onOptions: (cb: (event: TranslationStartOptions) => void) => () => void;
     };
     overlay: {
       setContentProtection: (enabled: boolean) => Promise<{ success: boolean; error?: string }>;

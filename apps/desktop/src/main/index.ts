@@ -274,7 +274,13 @@ app.whenReady().then(async () => {
     };
 
     const runFullscreenCapture = async () => {
+      // Esconde overlay e janela de tradução (se estiver visível)
       overlayManager.hide();
+      overlayManager.hideTranslationWindow();
+      // Aguarda um pouco para garantir que animações de minimizar/restaurar/fullscreen terminem
+      // antes de capturar o screenshot (evita que animações apareçam na captura)
+      // 500ms é suficiente para a maioria das animações do sistema
+      await new Promise(resolve => setTimeout(resolve, 500));
       try {
         const captureResult = await captureScreenshot({ mode: 'fullscreen' }, db);
         if (captureResult.success) {

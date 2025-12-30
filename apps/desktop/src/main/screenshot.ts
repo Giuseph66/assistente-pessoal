@@ -30,6 +30,12 @@ export interface ScreenshotResult {
   path?: string;
   width?: number;
   height?: number;
+  region?: {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  };
   error?: string;
 }
 
@@ -257,13 +263,17 @@ export async function captureArea(
   height: number,
   db?: DatabaseManager
 ): Promise<ScreenshotResult> {
-  return captureScreenshot(
+  const result = await captureScreenshot(
     {
       mode: 'area',
       region: { x, y, width, height },
     },
     db
   );
+  if (result.success) {
+    result.region = { x, y, width, height };
+  }
+  return result;
 }
 
 async function runCommand(command: string, args: string[]): Promise<{ stdout: string; stderr: string; code: number }> {
@@ -285,6 +295,15 @@ async function runCommand(command: string, args: string[]): Promise<{ stdout: st
   });
 }
 
+async function commandAvailable(command: string): Promise<boolean> {
+  try {
+    const result = await runCommand('which', [command]);
+    return result.code === 0 && result.stdout.trim().length > 0;
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Captura interativa de area via ferramentas do sistema (Wayland/X11)
  */
@@ -297,21 +316,38 @@ export async function captureAreaInteractive(db?: DatabaseManager): Promise<Scre
     const filePath = join(savePath, filename);
     const tempPath = join(savePath, `screenshot-${Date.now()}-raw.png`);
 
+    let region: { x: number; y: number; width: number; height: number } | null = null;
+
     if (displayServer === 'wayland') {
       const slurp = await runCommand('slurp', ['-f', '%x,%y,%w,%h']);
       if (slurp.code !== 0 || !slurp.stdout.trim()) {
         return { success: false, error: 'Selecao cancelada' };
       }
       const [x, y, w, h] = slurp.stdout.trim().split(',').map((value) => Number(value));
+      region = { x, y, width: w, height: h };
       const geometry = `${x},${y} ${w}x${h}`;
       const grim = await runCommand('grim', ['-g', geometry, tempPath]);
       if (grim.code !== 0) {
         throw new Error(`grim failed: ${grim.stderr || grim.stdout}`);
       }
     } else if (displayServer === 'x11') {
-      const maim = await runCommand('maim', ['-s', tempPath]);
-      if (maim.code !== 0) {
-        return { success: false, error: 'Selecao cancelada' };
+      if (await commandAvailable('slop')) {
+        const slop = await runCommand('slop', ['-f', '%x,%y,%w,%h']);
+        if (slop.code !== 0 || !slop.stdout.trim()) {
+          return { success: false, error: 'Selecao cancelada' };
+        }
+        const [x, y, w, h] = slop.stdout.trim().split(',').map((value) => Number(value));
+        region = { x, y, width: w, height: h };
+        const geometry = `${w}x${h}+${x}+${y}`;
+        const maim = await runCommand('maim', ['-g', geometry, tempPath]);
+        if (maim.code !== 0) {
+          throw new Error(`maim failed: ${maim.stderr || maim.stdout}`);
+        }
+      } else {
+        const maim = await runCommand('maim', ['-s', tempPath]);
+        if (maim.code !== 0) {
+          return { success: false, error: 'Selecao cancelada' };
+        }
       }
     } else {
       return { success: false, error: 'Display server nao suportado' };
@@ -351,6 +387,7 @@ export async function captureAreaInteractive(db?: DatabaseManager): Promise<Scre
       path: filePath,
       width,
       height,
+      region: region || undefined,
     };
   } catch (error: any) {
     logger.error({ err: error }, 'Failed to capture interactive screenshot');

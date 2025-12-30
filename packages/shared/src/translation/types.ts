@@ -25,13 +25,22 @@ export type TranslationBlock = {
   original: string;
   translated: string;
   bbox: { x: number; y: number; w: number; h: number };
+  screenBbox?: { x: number; y: number; w: number; h: number };
   confidence?: number;
+};
+
+export type TranslationCaptureRegion = {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
 };
 
 export type TranslationResult = {
   screenshotPath: string;
   width: number;
   height: number;
+  captureRegion?: TranslationCaptureRegion | null;
   blocks: TranslationBlock[];
 };
 
@@ -44,4 +53,5 @@ export type TranslationStartOptions = {
   showTooltips: boolean;
   minConfidence?: number;
   minTextLength?: number;
+  selectRegion?: boolean;
 };

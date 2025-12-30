@@ -165,9 +165,13 @@ const overlayApi = {
 
 const translationApi = {
     start: (options: any) => ipcRenderer.invoke('translation.start', options),
+    prepareSelection: (options: any) => ipcRenderer.invoke('translation.prepareSelection', options),
+    cancelSelection: () => ipcRenderer.invoke('translation.cancelSelection'),
     stop: () => ipcRenderer.invoke('translation.stop'),
     refresh: () => ipcRenderer.invoke('translation.refresh'),
     getStatus: () => ipcRenderer.invoke('translation.getStatus'),
+    getOptions: () => ipcRenderer.invoke('translation.getOptions'),
+    setOverlayVisible: (visible: boolean) => ipcRenderer.invoke('translation.setOverlayVisible', { visible }),
     onStatus: (cb: (event: any) => void) => {
         const listener = (_event: any, payload: any) => cb(payload)
         ipcRenderer.on('translation.status', listener)
@@ -182,6 +186,16 @@ const translationApi = {
         const listener = (_event: any, payload: any) => cb(payload)
         ipcRenderer.on('translation.error', listener)
         return () => ipcRenderer.removeListener('translation.error', listener)
+    },
+    onSelectRegion: (cb: (event: any) => void) => {
+        const listener = (_event: any, payload: any) => cb(payload)
+        ipcRenderer.on('translation.selectRegion', listener)
+        return () => ipcRenderer.removeListener('translation.selectRegion', listener)
+    },
+    onOptions: (cb: (event: any) => void) => {
+        const listener = (_event: any, payload: any) => cb(payload)
+        ipcRenderer.on('translation.options', listener)
+        return () => ipcRenderer.removeListener('translation.options', listener)
     },
 }
 

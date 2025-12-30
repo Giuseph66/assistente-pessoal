@@ -77,7 +77,12 @@ export class GeminiProvider extends BaseVisionProvider {
         if (message.role === 'user' && message === lastUser) {
           return { role: 'user', parts };
         }
-        return { role: message.role, parts: [{ text: message.content }] };
+        // Gemini API aceita apenas "user" ou "model" (não "assistant")
+        let role = message.role;
+        if (role === 'assistant') {
+          role = 'model';
+        }
+        return { role: role as 'user' | 'model', parts: [{ text: message.content }] };
       });
 
     const requestBody: any = {
@@ -150,10 +155,17 @@ export class GeminiProvider extends BaseVisionProvider {
     const systemMessage = req.messages.find((m) => m.role === 'system')?.content;
     const contents = req.messages
       .filter((m) => m.role !== 'system')
-      .map((message) => ({
-        role: message.role,
-        parts: [{ text: message.content }],
-      }));
+      .map((message) => {
+        // Gemini API aceita apenas "user" ou "model" (não "assistant")
+        let role = message.role;
+        if (role === 'assistant') {
+          role = 'model';
+        }
+        return {
+          role: role as 'user' | 'model',
+          parts: [{ text: message.content }],
+        };
+      });
 
     const requestBody: any = {
       contents,

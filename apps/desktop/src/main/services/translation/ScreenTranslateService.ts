@@ -6,7 +6,7 @@ import {
   TranslationResult,
   TranslationBlock,
 } from '@ricky/shared';
-import { captureScreenshot } from '../../screenshot';
+import { captureAreaInteractive, captureScreenshot } from '../../screenshot';
 import { getOverlayManager } from '../../overlay';
 import { OCRProvider } from './ocr/OCRProvider';
 import { TesseractCliProvider } from './ocr/TesseractCliProvider';
@@ -38,11 +38,19 @@ export class ScreenTranslateService extends EventEmitter {
     };
     this.running = true;
     this.cache.clear();
-    this.overlayManager.enterTranslationMode();
+    this.emit('options', options);
     await this.runOnce();
     if (this.options.liveMode) {
       this.scheduleNext();
     }
+  }
+
+  prepareSelection(_options: TranslationStartOptions): void {
+    this.emit('options', _options);
+  }
+
+  cancelSelection(): void {
+    if (this.running) return;
   }
 
   async stop(): Promise<void> {
@@ -69,6 +77,10 @@ export class ScreenTranslateService extends EventEmitter {
     return this.lastResult;
   }
 
+  getOptions(): TranslationStartOptions | null {
+    return this.options;
+  }
+
   private scheduleNext(): void {
     if (!this.options?.liveMode || !this.running) return;
     const interval = this.options.liveIntervalMs || 4000;
@@ -92,9 +104,19 @@ export class ScreenTranslateService extends EventEmitter {
     try {
       this.setStatus({ stage: 'capturing', message: 'Capturando tela...', timing: { startedAt } });
 
-      this.overlayManager.hide();
-      const captureResult = await captureScreenshot({ mode: 'fullscreen' });
-      this.overlayManager.show();
+      const shouldHide = !this.options.selectRegion;
+      if (shouldHide) {
+        this.overlayManager.hide();
+        await delay(220);
+      }
+
+      const captureResult = this.options.selectRegion
+        ? await captureAreaInteractive()
+        : await captureScreenshot({ mode: 'fullscreen' });
+
+      if (shouldHide) {
+        this.overlayManager.show();
+      }
 
       if (!captureResult.success || !captureResult.path) {
         throw new Error(captureResult.error || 'Falha ao capturar screenshot');
@@ -113,8 +135,10 @@ export class ScreenTranslateService extends EventEmitter {
         minTextLength: this.options.minTextLength,
       });
 
+      const captureRegion = captureResult.region || null;
+
       this.setStatus({ stage: 'translating', message: 'Traduzindo textos...', timing: { startedAt }, blocks: ocrBlocks.length });
-      const translatedBlocks = await this.translateBlocks(ocrBlocks);
+      const translatedBlocks = await this.translateBlocks(ocrBlocks, captureRegion);
 
       this.setStatus({ stage: 'rendering', message: 'Renderizando overlay...', timing: { startedAt }, blocks: translatedBlocks.length });
 
@@ -122,6 +146,7 @@ export class ScreenTranslateService extends EventEmitter {
         screenshotPath,
         width,
         height,
+        captureRegion,
         blocks: translatedBlocks,
       };
 
@@ -178,7 +203,10 @@ export class ScreenTranslateService extends EventEmitter {
     throw new Error('Argos Translate nao encontrado. Configure RICKY_ARGOS_PYTHON ou instale em apps/desktop/.venv (pip install argostranslate).');
   }
 
-  private async translateBlocks(blocks: Array<{ text: string; bbox: any; confidence?: number }>): Promise<TranslationBlock[]> {
+  private async translateBlocks(
+    blocks: Array<{ text: string; bbox: any; confidence?: number }>,
+    captureRegion: { x: number; y: number; width: number; height: number } | null
+  ): Promise<TranslationBlock[]> {
     if (!blocks.length || !this.options) return [];
 
     const fromLang = this.options.fromLang;
@@ -206,12 +234,30 @@ export class ScreenTranslateService extends EventEmitter {
     return blocks.map((block) => {
       const original = block.text.trim();
       const translated = this.cache.get(fromLang, toLang, original) || original;
+      const screenBbox = captureRegion
+        ? {
+            x: Math.round(block.bbox.x + captureRegion.x),
+            y: Math.round(block.bbox.y + captureRegion.y),
+            w: block.bbox.w,
+            h: block.bbox.h,
+          }
+        : {
+            x: Math.round(block.bbox.x),
+            y: Math.round(block.bbox.y),
+            w: block.bbox.w,
+            h: block.bbox.h,
+          };
       return {
         original,
         translated,
         bbox: block.bbox,
+        screenBbox,
         confidence: block.confidence,
       };
     });
   }
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }

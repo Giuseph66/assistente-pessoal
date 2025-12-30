@@ -25,10 +25,7 @@ export function TranslateOverlayView({
 
   const canRender = Boolean(imageUrl && imageSize && visible);
 
-  const scaledBlocks = useMemo(() => {
-    if (!imageSize) return blocks;
-    return blocks;
-  }, [blocks, imageSize]);
+  const scopedBlocks = useMemo(() => blocks, [blocks]);
 
   useEffect(() => {
     if (!canRender || !imageUrl || !imageSize) return;
@@ -47,11 +44,11 @@ export function TranslateOverlayView({
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
 
-      scaledBlocks.forEach((block) => {
+      scopedBlocks.forEach((block) => {
         drawBlock(ctx, block, debugBoxes);
       });
     };
-  }, [canRender, imageUrl, imageSize, scaledBlocks, debugBoxes]);
+  }, [canRender, imageUrl, imageSize, scopedBlocks, debugBoxes]);
 
   const handleMouseMove = (event: React.MouseEvent) => {
     if (!showTooltips || !imageSize) return;
@@ -63,7 +60,7 @@ export function TranslateOverlayView({
     const x = (event.clientX - rect.left) * scaleX;
     const y = (event.clientY - rect.top) * scaleY;
 
-    const hit = blocks.find(
+    const hit = scopedBlocks.find(
       (block) =>
         x >= block.bbox.x &&
         x <= block.bbox.x + block.bbox.w &&
