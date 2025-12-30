@@ -1,0 +1,19 @@
+{
+  "name": "ricky-assistente-pessoal",
+  "private": true,
+  "scripts": {
+    "dev": "pnpm --filter @ricky/engine build && pnpm --filter ricky-desktop dev",
+    "build": "pnpm -r build",
+    "lint": "pnpm -r lint",
+    "typecheck": "pnpm -r typecheck",
+    "setup": "./scripts/setup-containers.sh",
+    "build:engine": "pnpm --filter @ricky/engine build",
+    "dev:engine": "pnpm --filter @ricky/engine dev",
+    "postinstall": "pnpm --filter ricky-desktop rebuild:electron"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.0",
+    "electron-rebuild": "^3.2.9",
+    "typescript": "^5.3.3"
+  }
+}

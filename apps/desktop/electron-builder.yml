@@ -1,0 +1,11 @@
+appId: com.ricky.assistant
+productName: Ricky Assistant
+directories:
+  output: dist
+files:
+  - dist/**/*
+  - package.json
+linux:
+  target: AppImage
+  category: Utility
+

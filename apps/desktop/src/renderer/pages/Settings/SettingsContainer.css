@@ -1,0 +1,43 @@
+.settings-container {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.settings-tabs {
+  display: flex;
+  gap: 4px;
+  padding: 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  background-color: rgba(40, 40, 40, 0.5);
+}
+
+.settings-tab {
+  padding: 10px 20px;
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  color: #999;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+  transition: all 0.2s;
+  font-family: inherit;
+}
+
+.settings-tab:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: #e0e0e0;
+}
+
+.settings-tab.active {
+  background: rgba(100, 150, 255, 0.3);
+  color: #88b3ff;
+  border-bottom: 2px solid #6496ff;
+}
+
+.settings-content {
+  flex: 1;
+  overflow: auto;
+}
+

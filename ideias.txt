@@ -1,0 +1,254 @@
+Arquitetura nova (pra não virar gambiarra)
+Pipeline de STT (onde entram 4/5/6)
+
+AudioSource → STTProvider (Vosk) → TextPipeline → Storage → UI
+
+AudioSource agora tem 2 implementações:
+
+MicAudioSource (já existe / ou seu método atual)
+
+SystemAudioSource (monitor do sistema)
+
+TextPipeline (leve e modular):
+
+GlossaryStage
+
+NormalizerStage
+
+BoostStage (fuzzy limitado)
+
+(futuro) LLMSummaryStage
+
+1) Áudio do sistema (o mais crítico)
+Estratégia Linux mais estável (sem Docker)
+
+Usar PipeWire-Pulse (pactl/parec) porque funciona em quase toda distro com PipeWire hoje.
+
+Detecção da fonte monitor
+
+Executar pactl info e pactl list short sources
+
+Procurar source que termina com .monitor do sink padrão
+
+Salvar source_name
+
+Captura em PCM já no formato do Vosk
+
+Spawn de processo:
+
+parec --device=<MONITOR_SOURCE> --format=s16le --rate=16000 --channels=1
+
+ler stdout como Buffer e mandar pro Vosk
+
+Fallback (se pactl/parec não existir)
+
+pw-record / pw-cat (PipeWire nativo) como fallback (não como principal)
+
+Se nada existir: erro guiado “instale pipewire-pulse/pulseaudio-utils”
+
+UI/Config
+
+Configuração: Fonte de áudio: Microfone | Áudio do sistema
+
+Botão “Testar fonte” (mostra nível/contador de bytes chegando)
+
+2) Bookmarks (Tópico 2) — simples e MUITO útil
+UX
+
+Hotkey: Ctrl+Alt+B (customizável depois)
+
+Também botãozinho no painel da transcrição: “Marcar”
+
+Dados
+
+Nova tabela:
+
+bookmarks(id, session_id, ts, label, context_text)
+
+context_text: últimos N chars/linhas (ex. 500–1500 chars) pra referência rápida
+
+UI
+
+Coluna lateral “Bookmarks”
+
+Click → scroll para o timestamp do segmento mais próximo
+
+3) Timeline + busca rápida (Tópico 3)
+Banco
+
+Usar SQLite FTS5 (zero IA e MUITO rápido) para:
+
+segments.text
+
+notes.content
+
+bookmarks.context_text
+
+UI
+
+Campo de busca (com filtros):
+
+sessão / data / tags / “somente bookmarks” / “confiança baixa”
+
+Resultado: lista + “pular pro ponto”
+
+Render virtualizado (pra não travar com sessões longas)
+
+4) Normalização leve (Tópico 4)
+
+Sem IA, sem peso:
+
+remover repetições curtas (“é… é…”, “hã…”, “tipo tipo”)
+
+capitalizar início de frase
+
+quebras por tempo (se ficou 2–3s sem texto → nova linha)
+
+pontuação leve por heurística (bem conservadora)
+
+Config:
+
+normalizationLevel: off | light | medium
+
+5) Glossário (Tópico 5)
+
+CRUD simples:
+
+glossary(term, replace, language, enabled, priority)
+Aplicação:
+
+roda no stt.final antes de salvar/exibir
+
+suportar regras por idioma (PT/EN)
+
+Import/export:
+
+CSV pra você preencher rápido
+
+6) Boost/fuzzy corrections (Tópico 6) sem pesar
+
+Não vamos fazer “match em tudo” (isso pesa). Vamos limitar:
+
+Só aplica para palavras do glossário marcadas como boost=true
+
+Fuzzy somente em tokens com tamanho ≥ 4
+
+Distância Levenshtein máxima 1 (ou 2) e limite de comparações por segmento
+
+Config:
+
+boostEnabled
+
+maxEdits (1/2)
+
+maxOpsPerSegment (ex.: 50)
+
+7) Botão do pânico (Tópico 14)
+
+Hotkey global + botão:
+
+Ação instantânea:
+
+oculta overlay
+
+pausa render (não “pisca”)
+
+opcional: “limpar texto em tela” sem apagar do DB
+
+Config:
+
+“voltar em X segundos” ou “voltar manual”
+
+8) Logs/Diagnóstico (Tópico 21) componentizado
+Logger único
+
+logger.ts no main (pino/winston)
+
+níveis: debug/info/warn/error
+
+arquivo rotacionado: ~/.local/share/ricky/logs/*.log
+
+UI “Diagnostics”
+
+status:
+
+fonte de áudio ativa (mic/system)
+
+bytes/s chegando
+
+latência média por segmento
+
+erros recentes (stack + sugestão)
+
+botão “Exportar diagnóstico” (zip de logs + config + infos do sistema)
+
+9) Export (Tópico 12)
+
+TXT: transcrição inteira + bookmarks destacados
+
+SRT/VTT: gerar blocos por timestamp/pausas
+
+Export por sessão + opção “somente bookmarks”
+
+10) Command palette + copiar trechos (Tópicos 19 e 18)
+
+Ctrl+K abre palette:
+
+Start/Stop STT
+
+Marcar Bookmark
+
+Copiar último trecho
+
+Exportar sessão
+
+Ativar pânico
+
+Context menu (botão direito) em qualquer segmento:
+
+Copiar texto
+
+Copiar com timestamp
+
+Criar bookmark a partir do trecho
+
+11) Sessões com título/tags + filtros (Tópico 25)
+
+Quando iniciar:
+
+criar sessão automaticamente com:
+
+title default = “Reunião 2025-12-28 14:10”
+
+tags vazias
+Depois:
+
+editar título/tags
+
+filtros por dia/semana/mês:
+
+UI com calendário simples + chips de tags
+
+Banco:
+
+sessions(id, started_at, ended_at, title, tags_json, source: mic|system)
+
+Ordem ideal de implementação (pra funcionar sem quebrar)
+
+AudioSource System (monitor) + selector UI + testes
+
+Bookmarks
+
+Timeline + FTS5
+
+TextPipeline: Glossário → Normalizer → Boost
+
+Panic button
+
+Diagnostics/logs
+
+Export
+
+Command palette + context menu
+
+Sessões/tags/filtros

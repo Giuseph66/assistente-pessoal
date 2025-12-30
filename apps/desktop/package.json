@@ -1,0 +1,40 @@
+{
+    "name": "ricky-desktop",
+    "version": "0.0.1",
+    "main": "dist/main/index.js",
+    "scripts": {
+        "dev": "npm run rebuild:electron && npm run build-worker && electron-vite dev",
+        "build": "electron-vite build && npm run copy-migrations && npm run build-worker",
+        "preview": "electron-vite preview",
+        "typecheck": "tsc --noEmit",
+        "copy-migrations": "mkdir -p dist/main/database/migrations && cp -r src/main/database/migrations/*.js dist/main/database/migrations/ 2>/dev/null || true",
+        "build-worker": "mkdir -p dist/main/stt/workers && npx tsc src/main/stt/workers/sttWorker.ts src/main/stt/workers/fileTranscriberWorker.ts --outDir dist/main/stt/workers --module commonjs --target es2020 --esModuleInterop --skipLibCheck --resolveJsonModule --moduleResolution node || true",
+        "rebuild:electron": "electron-rebuild -f -w better-sqlite3,vosk,ffi-napi,ref-napi,sharp"
+    },
+    "dependencies": {
+        "@electron-toolkit/preload": "^2.0.0",
+        "@electron-toolkit/utils": "^2.0.0",
+        "@ricky/config": "workspace:*",
+        "@ricky/logger": "workspace:*",
+        "@ricky/shared": "workspace:*",
+        "better-sqlite3": "^9.0.0",
+        "electron-store": "^8.1.0",
+        "electron-updater": "^6.1.7",
+        "extract-zip": "^2.0.1",
+        "react": "^18.2.0",
+        "react-dom": "^18.2.0",
+        "sharp": "^0.33.0",
+        "tesseract.js": "^7.0.0",
+        "vosk": "^0.3.39",
+        "ws": "^8.14.0"
+    },
+    "devDependencies": {
+        "@types/react": "^18.2.43",
+        "@types/react-dom": "^18.2.17",
+        "@vitejs/plugin-react": "^4.2.1",
+        "electron": "^28.3.3",
+        "electron-vite": "^2.0.0",
+        "typescript": "^5.3.3",
+        "vite": "^5.0.0"
+    }
+}

@@ -1,0 +1,10 @@
+packages:
+  - apps/*
+  - packages/*
+  - services/*
+
+ignoredBuiltDependencies:
+  - electron
+
+onlyBuiltDependencies:
+  - tesseract.js

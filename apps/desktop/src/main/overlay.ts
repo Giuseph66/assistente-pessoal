@@ -1,0 +1,497 @@
+import { BrowserWindow, screen } from 'electron';
+import { join } from 'path';
+import { is } from '@electron-toolkit/utils';
+import { getConfigManager } from '@ricky/config';
+import { getLogger } from '@ricky/logger';
+
+const logger = getLogger();
+const config = getConfigManager();
+
+/**
+ * Gerenciador da janela overlay
+ */
+export class OverlayManager {
+  private overlayWindow: BrowserWindow | null = null;
+  private isVisible: boolean = true;
+  private currentContentProtection: boolean | null = null;
+  private isLinux: boolean = process.platform === 'linux';
+  private translationBounds: Electron.Rectangle | null = null;
+  private translationWasResizable: boolean | null = null;
+  private translationWasFullScreen: boolean | null = null;
+  private translationWasMaximized: boolean | null = null;
+  private translationApplyTimer: NodeJS.Timeout | null = null;
+  
+  /**
+   * Verifica se a plataforma suporta content protection nativo
+   * setContentProtection só funciona no Windows e macOS
+   */
+  private supportsContentProtection(): boolean {
+    return process.platform === 'win32' || process.platform === 'darwin';
+  }
+
+  /**
+   * Entra no modo de tradução (janela cobre a tela inteira)
+   */
+  enterTranslationMode(): void {
+    if (!this.overlayWindow) {
+      this.createWindow();
+    }
+
+    if (!this.overlayWindow) {
+      return;
+    }
+
+    if (!this.translationBounds) {
+      this.translationBounds = this.overlayWindow.getBounds();
+    }
+
+    if (this.translationWasResizable === null) {
+      this.translationWasResizable = this.overlayWindow.isResizable();
+    }
+    if (this.translationWasFullScreen === null) {
+      this.translationWasFullScreen = this.overlayWindow.isFullScreen();
+    }
+    if (this.translationWasMaximized === null) {
+      this.translationWasMaximized = this.overlayWindow.isMaximized();
+    }
+
+    this.applyTranslationLayout();
+    if (this.translationApplyTimer) {
+      clearTimeout(this.translationApplyTimer);
+    }
+    this.translationApplyTimer = setTimeout(() => {
+      this.applyTranslationLayout();
+    }, 150);
+  }
+
+  /**
+   * Sai do modo de tradução e restaura o tamanho anterior
+   */
+  exitTranslationMode(): void {
+    if (!this.overlayWindow || !this.translationBounds) return;
+    if (this.translationApplyTimer) {
+      clearTimeout(this.translationApplyTimer);
+      this.translationApplyTimer = null;
+    }
+    this.overlayWindow.setBounds(this.translationBounds, true);
+    this.translationBounds = null;
+    if (this.translationWasResizable !== null) {
+      this.overlayWindow.setResizable(this.translationWasResizable);
+      this.translationWasResizable = null;
+    }
+    if (this.translationWasFullScreen !== null) {
+      this.overlayWindow.setFullScreen(this.translationWasFullScreen);
+      this.translationWasFullScreen = null;
+    }
+    if (this.translationWasMaximized !== null) {
+      if (this.translationWasMaximized) {
+        this.overlayWindow.maximize();
+      } else {
+        this.overlayWindow.unmaximize();
+      }
+      this.translationWasMaximized = null;
+    }
+  }
+
+  private applyTranslationLayout(): void {
+    if (!this.overlayWindow) return;
+    const display = screen.getDisplayMatching(this.overlayWindow.getBounds());
+    this.overlayWindow.setResizable(true);
+    this.overlayWindow.setMaximizable(true);
+    this.overlayWindow.setFullScreenable(true);
+    this.overlayWindow.setBounds(display.bounds, true);
+    this.overlayWindow.setPosition(display.bounds.x, display.bounds.y);
+    this.overlayWindow.setSize(display.bounds.width, display.bounds.height, true);
+    this.overlayWindow.setFullScreen(true);
+    this.overlayWindow.maximize();
+    this.overlayWindow.setAlwaysOnTop(true, 'screen-saver');
+  }
+
+  /**
+   * Cria a janela overlay
+   */
+  createWindow(): void {
+    if (this.overlayWindow) {
+      logger.warn('Overlay window already exists');
+      return;
+    }
+
+    const overlayConfig = config.getAll().overlay;
+    const { position, size, opacity, alwaysOnTop, presentationMode } = overlayConfig;
+    // contentProtection pode não estar no tipo ainda, mas está no schema
+    const contentProtection = (overlayConfig as any).contentProtection !== false; // Default: true
+
+    this.overlayWindow = new BrowserWindow({
+      width: size.width,
+      height: size.height,
+      x: position.x,
+      y: position.y,
+      frame: false,
+      transparent: true,
+      alwaysOnTop: alwaysOnTop,
+      skipTaskbar: true,
+      resizable: false,
+      movable: true,
+      focusable: true,
+      hasShadow: false,
+      webPreferences: {
+        preload: join(__dirname, '../preload/index.js'),
+        nodeIntegration: false,
+        contextIsolation: true,
+        sandbox: false,
+      },
+    });
+
+    // Carrega o conteúdo
+    if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
+      this.overlayWindow.loadURL(`${process.env['ELECTRON_RENDERER_URL']}#overlay`);
+    } else {
+      this.overlayWindow.loadFile(join(__dirname, '../renderer/index.html'), {
+        hash: 'overlay',
+      });
+    }
+
+    // Aplica opacidade via CSS (mais confiável que opacity nativo)
+    this.overlayWindow.webContents.on('did-finish-load', () => {
+      this.setOpacity(opacity);
+      if (presentationMode) {
+        this.hide();
+      }
+    });
+
+    // Ativa content protection para tornar a janela invisível no compartilhamento de tela
+    // Isso previne que a janela seja capturada por Google Meet, Zoom, etc.
+    // Usa once() para evitar múltiplas execuções e verifica estado interno antes de aplicar
+    this.overlayWindow.once('ready-to-show', () => {
+      // Usa estado interno se disponível, senão usa config
+      const shouldProtect = this.currentContentProtection !== null 
+        ? this.currentContentProtection 
+        : (contentProtection !== false);
+      
+      // Aplica content protection (que já verifica plataforma internamente)
+      this.setContentProtection(shouldProtect);
+    });
+
+    // Salva posição e tamanho quando mudados
+    this.overlayWindow.on('moved', () => {
+      if (this.overlayWindow) {
+        const [x, y] = this.overlayWindow.getPosition();
+        config.set('overlay', 'position', { x, y });
+        logger.debug({ x, y }, 'Overlay position saved');
+      }
+    });
+
+    this.overlayWindow.on('resized', () => {
+      if (this.overlayWindow) {
+        const [width, height] = this.overlayWindow.getSize();
+        config.set('overlay', 'size', { width, height });
+        logger.debug({ width, height }, 'Overlay size saved');
+      }
+    });
+
+    // Permite foco para edicao; so desfoca no modo apresentacao
+    this.overlayWindow.on('focus', () => {
+      if (config.getAll().overlay.presentationMode && this.overlayWindow) {
+        this.overlayWindow.blur();
+      }
+    });
+
+    logger.info('Overlay window created');
+  }
+
+  /**
+   * Mostra a janela overlay
+   * @param enableContentProtection Se true, também habilita content protection
+   */
+  show(enableContentProtection: boolean = false): void {
+    if (!this.overlayWindow) {
+      this.createWindow();
+      return;
+    }
+
+    if (!this.overlayWindow.isVisible()) {
+      this.overlayWindow.show();
+      this.isVisible = true;
+      
+      // Se solicitado, também habilita content protection
+      if (enableContentProtection) {
+        this.setContentProtection(true); // Usa método que já verifica plataforma
+      }
+      
+      logger.debug('Overlay shown');
+    }
+  }
+
+  /**
+   * Oculta a janela overlay
+   * @param disableContentProtection Se true, também desabilita content protection
+   */
+  hide(disableContentProtection: boolean = false): void {
+    if (this.overlayWindow && this.overlayWindow.isVisible()) {
+      this.overlayWindow.hide();
+      this.isVisible = false;
+      
+      // Se solicitado, também desabilita content protection para garantir que não apareça
+      if (disableContentProtection) {
+        this.setContentProtection(false); // Usa método que já verifica plataforma
+      }
+      
+      logger.debug('Overlay hidden');
+    }
+  }
+
+  /**
+   * Alterna visibilidade do overlay
+   */
+  toggle(): void {
+    if (this.isVisible) {
+      this.hide();
+    } else {
+      this.show();
+    }
+  }
+
+  /**
+   * Define a opacidade do overlay (0-100)
+   */
+  setOpacity(opacity: number): void {
+    if (!this.overlayWindow) return;
+
+    const clampedOpacity = Math.max(0, Math.min(100, opacity));
+    config.set('overlay', 'opacity', clampedOpacity);
+
+    // Aplica via CSS
+    this.overlayWindow.webContents.executeJavaScript(
+      `document.documentElement.style.opacity = ${clampedOpacity / 100}`
+    );
+
+    logger.debug({ opacity: clampedOpacity }, 'Overlay opacity set');
+  }
+
+  /**
+   * Define o modo apresentação (oculta instantaneamente)
+   */
+  setPresentationMode(enabled: boolean): void {
+    config.set('overlay', 'presentationMode', enabled);
+    if (enabled) {
+      this.hide();
+    } else {
+      this.show();
+    }
+    logger.debug({ enabled }, 'Presentation mode toggled');
+  }
+
+  /**
+   * Aplica workarounds específicos para Linux (já que setContentProtection não funciona)
+   * No Linux, não há como esconder completamente da captura, mas podemos tornar a janela mais discreta
+   */
+  private applyLinuxWorkarounds(enabled: boolean): void {
+    if (!this.isLinux || !this.overlayWindow) return;
+    
+    // Workarounds já aplicados na criação da janela:
+    // - skipTaskbar: true ✓
+    // - alwaysOnTop: true ✓
+    // - frameless: true ✓
+    // - transparent: true ✓
+    
+    // Nota: Electron não expõe diretamente override_redirect ou WM hints avançados
+    // As propriedades básicas já estão configuradas para tornar a janela discreta
+    
+    if (enabled) {
+      logger.debug('Linux workarounds active (skipTaskbar, alwaysOnTop, frameless already set)');
+      logger.warn('Content protection is limited on Linux - app may still appear in screen sharing. Consider sharing specific windows instead of entire screen.');
+    } else {
+      logger.debug('Linux workarounds disabled');
+    }
+  }
+
+  /**
+   * Define o content protection (torna janela invisível no compartilhamento de tela)
+   * @param enabled true para ocultar no screen sharing, false para permitir captura
+   */
+  setContentProtection(enabled: boolean): void {
+    if (!this.overlayWindow) {
+      logger.warn('Cannot set content protection: overlay window not created');
+      return;
+    }
+
+    // Atualiza estado interno
+    this.currentContentProtection = enabled;
+    config.set('overlay', 'contentProtection', enabled);
+
+    if (this.supportsContentProtection()) {
+      // Windows/macOS: usar API nativa
+      try {
+        this.overlayWindow.setContentProtection(enabled);
+        logger.info({ enabled, platform: process.platform }, 'Content protection set via native API');
+      } catch (error) {
+        logger.warn({ err: error, enabled, platform: process.platform }, 'Failed to set content protection');
+      }
+    } else {
+      // Linux: aplicar workarounds (setContentProtection não funciona no Linux)
+      this.applyLinuxWorkarounds(enabled);
+      logger.info({ enabled, platform: 'linux' }, 'Content protection workarounds applied (Linux limitation - setContentProtection not supported)');
+    }
+  }
+
+  /**
+   * Move a janela para uma posição específica
+   */
+  setPosition(x: number, y: number): void {
+    if (this.overlayWindow) {
+      const primaryDisplay = screen.getPrimaryDisplay();
+      const { width, height } = primaryDisplay.workAreaSize;
+
+      // Garante que a janela fique dentro dos limites da tela
+      const clampedX = Math.max(0, Math.min(x, width - 100));
+      const clampedY = Math.max(0, Math.min(y, height - 100));
+
+      this.overlayWindow.setPosition(clampedX, clampedY);
+      config.set('overlay', 'position', { x: clampedX, y: clampedY });
+    }
+  }
+
+  /**
+   * Redimensiona a janela
+   */
+  setSize(width: number, height: number): void {
+    if (this.overlayWindow) {
+      this.overlayWindow.setSize(width, height);
+      config.set('overlay', 'size', { width, height });
+    }
+  }
+
+  /**
+   * Obtém a janela overlay
+   */
+  getWindow(): BrowserWindow | null {
+    return this.overlayWindow;
+  }
+
+  /**
+   * Verifica se o overlay está visível
+   */
+  isOverlayVisible(): boolean {
+    return this.isVisible && this.overlayWindow?.isVisible() === true;
+  }
+
+  /**
+   * Obtém o estado atual do content protection
+   */
+  getCurrentContentProtection(): boolean | null {
+    return this.currentContentProtection;
+  }
+
+  /**
+   * Obtém informações sobre a plataforma e suporte a content protection
+   */
+  getPlatformInfo(): { platform: string; supportsContentProtection: boolean } {
+    return {
+      platform: process.platform,
+      supportsContentProtection: this.supportsContentProtection()
+    };
+  }
+
+  /**
+   * Obtém o número de monitores conectados
+   */
+  getDisplayCount(): number {
+    try {
+      const displays = screen.getAllDisplays();
+      return displays.length;
+    } catch (error) {
+      logger.warn({ err: error }, 'Failed to get display count');
+      return 1; // Fallback: assume 1 monitor
+    }
+  }
+
+  /**
+   * Move a janela overlay para o próximo monitor disponível
+   * Preserva a posição relativa dentro do workArea
+   */
+  moveToNextMonitor(): boolean {
+    if (!this.overlayWindow) {
+      logger.warn('Cannot move to next monitor: overlay window not created');
+      return false;
+    }
+
+    try {
+      const displays = screen.getAllDisplays();
+      if (displays.length < 2) {
+        logger.debug('Only one display available, cannot move to next monitor');
+        return false; // Nada a fazer com 1 monitor
+      }
+
+      const bounds = this.overlayWindow.getBounds();
+      const currentDisplay = screen.getDisplayMatching(bounds);
+
+      const currentIndex = displays.findIndex(d => d.id === currentDisplay.id);
+      if (currentIndex === -1) {
+        logger.warn('Current display not found in displays list');
+        return false;
+      }
+
+      const nextIndex = (currentIndex + 1) % displays.length;
+      const nextDisplay = displays[nextIndex];
+
+      // Usar workArea para respeitar barras/docks
+      const wa = nextDisplay.workArea;
+
+      // Preservar posição relativa dentro do workArea
+      const relativeX = bounds.x - currentDisplay.workArea.x;
+      const relativeY = bounds.y - currentDisplay.workArea.y;
+
+      // Calcular nova posição dentro do workArea do próximo monitor
+      const newX = wa.x + Math.max(0, Math.min(relativeX, wa.width - bounds.width));
+      const newY = wa.y + Math.max(0, Math.min(relativeY, wa.height - bounds.height));
+
+      this.overlayWindow.setBounds({
+        x: newX,
+        y: newY,
+        width: bounds.width,
+        height: bounds.height
+      }, true);
+
+      // Atualizar posição salva na config
+      config.set('overlay', 'position', { x: newX, y: newY });
+
+      this.overlayWindow.focus();
+
+      logger.info({ 
+        from: currentDisplay.id, 
+        to: nextDisplay.id,
+        newPosition: { x: newX, y: newY }
+      }, 'Overlay moved to next monitor');
+
+      return true;
+    } catch (error) {
+      logger.error({ err: error }, 'Failed to move overlay to next monitor');
+      return false;
+    }
+  }
+
+  /**
+   * Fecha a janela overlay
+   */
+  destroy(): void {
+    if (this.overlayWindow) {
+      this.overlayWindow.destroy();
+      this.overlayWindow = null;
+      this.isVisible = false;
+      logger.info('Overlay window destroyed');
+    }
+  }
+}
+
+// Singleton
+let overlayManager: OverlayManager | null = null;
+
+/**
+ * Obtém instância singleton do OverlayManager
+ */
+export function getOverlayManager(): OverlayManager {
+  if (!overlayManager) {
+    overlayManager = new OverlayManager();
+  }
+  return overlayManager;
+}
