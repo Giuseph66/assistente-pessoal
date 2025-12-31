@@ -512,8 +512,8 @@ export class DatabaseManager {
    */
   saveAISession(session: Omit<AISession, 'id' | 'created_at'>): number {
     const result = this.db
-      .prepare('INSERT INTO ai_sessions (screenshot_id, provider_id, model_name, created_at) VALUES (?, ?, ?, ?)')
-      .run(session.screenshotId || null, session.providerId, session.modelName, Date.now());
+      .prepare('INSERT INTO ai_sessions (screenshot_id, provider_id, model_name, summary, created_at) VALUES (?, ?, ?, ?, ?)')
+      .run(session.screenshotId || null, session.providerId, session.modelName, session.summary || null, Date.now());
     return result.lastInsertRowid as number;
   }
 
@@ -530,9 +530,17 @@ export class DatabaseManager {
    * Obtém sessões por data (timestamp start/end)
    */
   getAISessionsByDate(start: number, end: number): AISession[] {
-    return this.db
+    const rows = this.db
       .prepare('SELECT * FROM ai_sessions WHERE created_at >= ? AND created_at <= ? ORDER BY created_at DESC')
-      .all(start, end) as AISession[];
+      .all(start, end);
+    return rows.map((s: any) => ({
+      id: s.id,
+      screenshotId: s.screenshot_id,
+      providerId: s.provider_id,
+      modelName: s.model_name,
+      summary: s.summary,
+      createdAt: s.created_at
+    })) as AISession[];
   }
 
   /**
@@ -540,7 +548,23 @@ export class DatabaseManager {
    */
   getAISessionById(id: number): AISession | null {
     const row = this.db.prepare('SELECT * FROM ai_sessions WHERE id = ?').get(id);
-    return (row as AISession) || null;
+    if (!row) return null;
+    const s = row as any;
+    return {
+      id: s.id,
+      screenshotId: s.screenshot_id,
+      providerId: s.provider_id,
+      modelName: s.model_name,
+      summary: s.summary,
+      createdAt: s.created_at
+    } as AISession;
+  }
+
+  /**
+   * Atualiza o resumo de uma sessão
+   */
+  updateAISessionSummary(id: number, summary: string): void {
+    this.db.prepare('UPDATE ai_sessions SET summary = ? WHERE id = ?').run(summary, id);
   }
 
   // ========== AI Message Methods ==========

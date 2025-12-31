@@ -71,8 +71,14 @@ export class SystemAudioPreviewService {
     private broadcastLevel(level: number): void {
         const payload = { level, ts: Date.now() };
         BrowserWindow.getAllWindows().forEach((win) => {
-            if (!win.isDestroyed()) {
-                win.webContents.send('systemAudio.level', payload);
+            if (win.isDestroyed()) return;
+            try {
+                const contents = win.webContents;
+                if (!contents.isDestroyed() && !contents.isCrashed()) {
+                    contents.send('systemAudio.level', payload);
+                }
+            } catch (error) {
+                // Ignore errors when sending to destroyed windows
             }
         });
     }

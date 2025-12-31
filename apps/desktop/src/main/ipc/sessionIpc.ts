@@ -81,6 +81,7 @@ export function registerSessionIpc(db: DatabaseManager): void {
             const messages = db.getAIMessages(sessionId);
             return {
                 ...session,
+                summary: session.summary,
                 messages: messages.map(m => ({
                     id: m.id,
                     role: m.role,

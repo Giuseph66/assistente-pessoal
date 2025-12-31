@@ -1,21 +1,25 @@
 import { useEffect, useRef } from 'react';
 
+const clampLevel = (value: number): number => Math.max(0, Math.min(1, value));
+
 interface AudioVisualizerProps {
     analyser: AnalyserNode | null;
     level?: number | null;
+    levelRef?: { current: number };
     width?: number;
     height?: number;
 }
 
-export function AudioVisualizer({ analyser, level, width = 360, height = 64 }: AudioVisualizerProps): JSX.Element {
+export function AudioVisualizer({ analyser, level, levelRef, width = 360, height = 64 }: AudioVisualizerProps): JSX.Element {
     const canvasRef = useRef<HTMLCanvasElement | null>(null);
     const animationFrameRef = useRef<number | null>(null);
     const smoothedHeightsRef = useRef<number[]>([]);
-    const levelRef = useRef(0);
+    const internalLevelRef = useRef(0);
+    const externalLevelRef = levelRef;
 
     useEffect(() => {
         if (typeof level === 'number') {
-            levelRef.current = Math.max(0, Math.min(1, level));
+            internalLevelRef.current = clampLevel(level);
         }
     }, [level]);
 
@@ -51,6 +55,9 @@ export function AudioVisualizer({ analyser, level, width = 360, height = 64 }: A
 
             // Smoothing factor (lower = smoother/slower, higher = more reactive)
             const smoothing = 0.15;
+            const fallbackLevel = clampLevel(
+                externalLevelRef ? externalLevelRef.current : internalLevelRef.current
+            );
 
             for (let i = 0; i < barCount; i++) {
                 // Sample frequency data with averaging for better representation
@@ -71,7 +78,7 @@ export function AudioVisualizer({ analyser, level, width = 360, height = 64 }: A
                     rawValue = count > 0 ? (sum / count) / 255 : 0;
                 } else {
                     const curve = 0.35 + 0.65 * Math.sin((i / barCount) * Math.PI);
-                    rawValue = levelRef.current * curve;
+                    rawValue = fallbackLevel * curve;
                 }
 
                 // Apply smoothing
@@ -130,7 +137,7 @@ export function AudioVisualizer({ analyser, level, width = 360, height = 64 }: A
                 cancelAnimationFrame(animationFrameRef.current);
             }
         };
-    }, [analyser]);
+    }, [analyser, levelRef]);
 
     return (
         <canvas

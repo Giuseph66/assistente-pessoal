@@ -96,9 +96,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
     const [systemAudioSources, setSystemAudioSources] = useState<{ id: string; name: string }[]>([]);
     const sttMicAnalyser = useSttMicAnalyser();
     const [localAnalyser, setLocalAnalyser] = useState<AnalyserNode | null>(null);
-    const [systemLevel, setSystemLevel] = useState(0);
     const localStreamRef = useRef<MediaStream | null>(null);
     const localContextRef = useRef<AudioContext | null>(null);
+    const systemLevelRef = useRef(0);
 
     // Fetch keys and config on mount
     useEffect(() => {
@@ -231,37 +231,56 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
 
     // System Audio Preview Effect
     useEffect(() => {
-        if (isOpen && activeSection === 'audio') {
-            let isMounted = true;
-
-            const startPreview = async () => {
-                try {
-                    let source = systemAudioSources.find((s: { name: string; id: string }) => s.name === selectedSystemAudio);
-                    if (selectedSystemAudio === 'Padrão') {
-                        source = systemAudioSources.find((s: any) => s.isDefaultCandidate) || systemAudioSources[0];
-                    }
-                    if (source && (globalThis as any).window.systemAudio) {
-                        await (globalThis as any).window.systemAudio.startPreview(source.id);
-                    }
-                } catch (err) {
-                    console.error('Failed to start system audio preview:', err);
-                }
-            };
-
-            const offLevel = (globalThis as any).window.systemAudio?.onLevel((payload: { level: number }) => {
-                if (isMounted) setSystemLevel(payload.level);
-            });
-
-            startPreview();
-
-            return () => {
-                isMounted = false;
-                if (offLevel) offLevel();
-                (globalThis as any).window.systemAudio?.stopPreview();
-                setSystemLevel(0);
-            };
+        if (!isOpen || activeSection !== 'audio' || !(globalThis as any).window.systemAudio) {
+            return;
         }
-        return undefined;
+
+        let isMounted = true;
+        let offLevel: (() => void) | undefined;
+
+        // Registrar listener primeiro para garantir que não perdemos eventos
+        offLevel = (globalThis as any).window.systemAudio?.onLevel((payload: { level: number }) => {
+            if (isMounted) {
+                systemLevelRef.current = payload.level;
+            }
+        });
+
+        const startPreview = async () => {
+            try {
+                if (!isMounted) return;
+                
+                let source = systemAudioSources.find((s: { name: string; id: string }) => s.name === selectedSystemAudio);
+                if (selectedSystemAudio === 'Padrão') {
+                    source = systemAudioSources.find((s: any) => s.isDefaultCandidate) || systemAudioSources[0];
+                }
+                
+                if (!source?.id) {
+                    console.warn('No system audio source selected');
+                    return;
+                }
+
+                await (globalThis as any).window.systemAudio.startPreview(source.id);
+            } catch (err) {
+                console.error('Failed to start system audio preview:', err);
+                systemLevelRef.current = 0;
+            }
+        };
+
+        // Aguardar que as fontes estejam disponíveis antes de iniciar
+        if (systemAudioSources.length > 0) {
+            startPreview();
+        }
+
+        return () => {
+            isMounted = false;
+            if (offLevel) {
+                offLevel();
+            }
+            (globalThis as any).window.systemAudio?.stopPreview().catch(() => {
+                // Ignorar erros ao parar preview
+            });
+            systemLevelRef.current = 0;
+        };
     }, [isOpen, activeSection, selectedSystemAudio, systemAudioSources]);
 
     const showToast = (message: string) => {
@@ -491,7 +510,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
                                     />
                                 </div>
                                 <div className="visualizer-container-settings">
-                                    <AudioVisualizer analyser={null} level={systemLevel} width={220} height={60} />
+                                    <AudioVisualizer analyser={null} levelRef={systemLevelRef} width={220} height={60} />
                                     <span className="visualizer-label">Monitorando saída...</span>
                                 </div>
                             </div>

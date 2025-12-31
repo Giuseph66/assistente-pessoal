@@ -122,6 +122,7 @@ export interface AISession {
   screenshotId: number | null;
   providerId: AIProviderId;
   modelName: string;
+  summary?: string | null;
   createdAt: number;
 }
 

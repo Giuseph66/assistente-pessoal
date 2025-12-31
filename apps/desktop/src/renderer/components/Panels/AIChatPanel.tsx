@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { Screenshot } from '@ricky/shared';
+import './AIChatPanel.css';
 
 interface Message {
   id: number;
@@ -11,17 +12,18 @@ interface Message {
   createdAt: number;
 }
 
-interface AIChatPanelProps {
+export interface AIChatPanelProps {
   sessionId?: number | null;
 }
 
-export function AIChatPanel({ sessionId }: AIChatPanelProps): JSX.Element {
+export const AIChatPanel: React.FC<AIChatPanelProps> = ({ sessionId }) => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [attachedScreenshot, setAttachedScreenshot] = useState<{ id: number; url: string } | null>(null);
   const [activeScreenshot, setActiveScreenshot] = useState<{ id: number; url: string } | null>(null);
   const [showConfig, setShowConfig] = useState(false);
+  const [isListening, setIsListening] = useState(false);
   const [config, setConfig] = useState<any>(null);
   const [providers, setProviders] = useState<Array<{ id: string; name: string }>>([]);
   const [models, setModels] = useState<Array<{ id: string; name: string }>>([]);
@@ -103,6 +105,49 @@ export function AIChatPanel({ sessionId }: AIChatPanelProps): JSX.Element {
     }, 100);
     return () => clearTimeout(timer);
   }, []);
+
+  // STT Listeners
+  useEffect(() => {
+    if (!window.stt) return;
+
+    const offPartial = window.stt.onPartial((event) => {
+      if (event.text) {
+        // We could show partial text somewhere, but for now let's just wait for final
+      }
+    });
+
+    const offFinal = window.stt.onFinal((event) => {
+      if (event.text) {
+        setInput(prev => {
+          const space = prev && !prev.endsWith(' ') ? ' ' : '';
+          return prev + space + event.text;
+        });
+      }
+    });
+
+    const offStatus = window.stt.onStatus((status) => {
+      setIsListening(status.state === 'running');
+    });
+
+    return () => {
+      offPartial();
+      offFinal();
+      offStatus();
+    };
+  }, []);
+
+  const toggleVoiceMode = async () => {
+    if (!window.stt) return;
+    try {
+      if (isListening) {
+        await window.stt.stop();
+      } else {
+        await window.stt.start();
+      }
+    } catch (err) {
+      console.error('Failed to toggle voice mode:', err);
+    }
+  };
 
   useEffect(() => {
     const offStarted = window.ai.onAnalysisStarted((event) => {
@@ -416,539 +461,138 @@ export function AIChatPanel({ sessionId }: AIChatPanelProps): JSX.Element {
     };
   }, []);
 
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      handleSend();
+    }
+  };
+
   return (
-    <div
-      className="ai-chat-panel"
-      style={{
-        display: 'flex',
-        flexDirection: 'column',
-        height: '100%',
-        WebkitAppRegion: 'no-drag',
-        position: 'relative',
-        margin: '-12px', // Remove padding do overlay-content
-        padding: '0',
-      }}
-      onMouseDown={(e) => {
-        // Permite interação dentro do painel
-        e.stopPropagation();
-      }}
-      onClick={(e) => {
-        e.stopPropagation();
-      }}
-    >
+    <div className="ai-chat-panel">
       {/* Header */}
-      <div className="panel-header" style={{ padding: '12px', borderBottom: '1px solid #444', display: 'flex', justifyContent: 'space-between', alignItems: 'center', WebkitAppRegion: 'no-drag' }}>
-        <h3 style={{ margin: 0 }}>My AI</h3>
-        <button
-          onClick={() => setShowConfig(true)}
-          style={{
-            padding: '4px 8px',
-            backgroundColor: 'transparent',
-            border: '1px solid #444',
-            borderRadius: '4px',
-            color: '#e0e0e0',
-            cursor: 'pointer',
-            fontSize: '14px',
-          }}
-          title="Configurações"
-        >
-          ⚙️
-        </button>
+      <div className="chat-header">
+        <div className="chat-title">
+          <span className="logo-icon">✨</span>
+          <span>My AI</span>
+          <span className="model-badge">Gemini Pro</span>
+        </div>
+        <div className="header-actions">
+          <button onClick={() => setShowConfig(true)} title="Configurações">
+            ⚙️
+          </button>
+        </div>
       </div>
 
-      {/* Mensagens */}
-      <div
-        style={{
-          flex: 1,
-          overflow: 'auto',
-          padding: '12px',
-          display: 'flex',
-          flexDirection: 'column',
-          gap: '10px',
-          WebkitAppRegion: 'no-drag',
-        }}
-      >
+      {/* Messages */}
+      <div className="messages-container">
         {messages.length === 0 ? (
-          <div style={{ textAlign: 'center', color: '#999', marginTop: '40px' }}>
-            <p>Olá! Sou seu assistente de IA.</p>
-            <p style={{ fontSize: '12px', marginTop: '10px' }}>
-              Anexe uma screenshot ou digite uma mensagem para começar.
-            </p>
+          <div className="empty-state">
+            <div className="empty-icon">✨</div>
+            <h3>Como posso ajudar hoje?</h3>
+            <p>Faça uma pergunta ou anexe um screenshot para começar.</p>
           </div>
         ) : (
           messages.map((message) => (
-            <div
-              key={message.id}
-              style={{
-                padding: '10px',
-                backgroundColor: message.role === 'user' ? '#1976d2' : '#2d2d2d',
-                borderRadius: '8px',
-                alignSelf: message.role === 'user' ? 'flex-end' : 'flex-start',
-                maxWidth: '80%',
-              }}
-            >
-              {message.screenshotUrl && (
-                <img
-                  src={message.screenshotUrl}
-                  alt="Screenshot"
-                  style={{
-                    width: '100%',
-                    maxWidth: '300px',
-                    borderRadius: '4px',
-                    marginBottom: '8px',
-                  }}
-                />
-              )}
-              <div style={{ whiteSpace: 'pre-wrap' }}>{message.content}</div>
-              {message.recognizedText && message.role === 'assistant' && (
-                <div
-                  style={{
-                    marginTop: '8px',
-                    padding: '6px 8px',
-                    borderRadius: '6px',
-                    backgroundColor: 'rgba(255, 255, 255, 0.08)',
-                    fontSize: '12px',
-                    color: '#d6d6d6',
-                  }}
-                >
-                  <div style={{ fontSize: '11px', color: '#9aa0a6', marginBottom: '4px' }}>
-                    Texto reconhecido
+            <div key={message.id} className={`message ${message.role}`}>
+              <div className={`avatar ${message.role}`}>
+                {message.role === 'user' ? '👤' : '✨'}
+              </div>
+              <div className="message-content">
+                {message.screenshotUrl && (
+                  <div className="screenshot-attachment">
+                    <img src={message.screenshotUrl} alt="Screenshot" />
                   </div>
-                  <div style={{ whiteSpace: 'pre-wrap' }}>{message.recognizedText}</div>
-                </div>
-              )}
+                )}
+                <div className="bubble">{message.content}</div>
+                {message.recognizedText && message.role === 'assistant' && (
+                  <div className="recognized-text">
+                    <small>Texto reconhecido:</small>
+                    <p>{message.recognizedText}</p>
+                  </div>
+                )}
+              </div>
             </div>
           ))
         )}
+
         {isAnalyzing && (
-          <div
-            style={{
-              padding: '10px',
-              backgroundColor: '#2d2d2d',
-              borderRadius: '8px',
-              alignSelf: 'flex-start',
-            }}
-          >
-            <div style={{ fontSize: '12px', color: '#999', marginBottom: '5px' }}>Assistente</div>
-            <div>Pensando...</div>
+          <div className="message ai">
+            <div className="avatar ai">✨</div>
+            <div className="message-content">
+              <div className="bubble typing-indicator">Pensando...</div>
+            </div>
           </div>
         )}
+
+        {error && (
+          <div className="error-message">
+            ⚠️ {error}
+          </div>
+        )}
+
         <div ref={messagesEndRef} />
       </div>
 
-      {/* Erro */}
-      {error && (
-        <div
-          style={{
-            padding: '10px',
-            backgroundColor: '#d32f2f',
-            color: '#fff',
-            margin: '0 10px',
-            borderRadius: '4px',
-            fontSize: '12px',
-          }}
-        >
-          {error}
-        </div>
-      )}
-
-      {(isAnalyzing || lastUsage) && (
-        <div
-          style={{
-            padding: '8px 12px',
-            borderTop: '1px solid #444',
-            borderBottom: '1px solid #444',
-            backgroundColor: '#1a1a1a',
-            fontSize: '12px',
-            color: '#cfcfcf',
-          }}
-        >
-          <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', marginBottom: '6px' }}>
-            {isAnalyzing && analysisMeta && (
-              <span>
-                Tempo: {(elapsedMs / 1000).toFixed(1)}s / {(analysisMeta.timeoutMs / 1000).toFixed(0)}s
-              </span>
-            )}
-            {lastUsage && (
-              <>
-                <span>Tokens: {lastUsage.tokensIn ?? '-'} / {lastUsage.tokensOut ?? '-'}</span>
-                {lastUsage.model && <span>Modelo: {lastUsage.model}</span>}
-                {lastUsage.provider && <span>Provider: {lastUsage.provider}</span>}
-                {lastUsage.durationMs && <span>Duração: {(lastUsage.durationMs / 1000).toFixed(1)}s</span>}
-              </>
-            )}
-          </div>
-          {isAnalyzing && analysisMeta && (
-            <div style={{ height: '6px', backgroundColor: '#2d2d2d', borderRadius: '999px', overflow: 'hidden' }}>
-              <div
-                style={{
-                  height: '100%',
-                  width: `${Math.min(96, Math.max(4, (elapsedMs / analysisMeta.timeoutMs) * 100))}%`,
-                  backgroundColor: '#1976d2',
-                  transition: 'width 0.2s ease',
-                }}
+      {/* Input Area */}
+      <div className="input-area">
+        <div className="input-container">
+          {(attachedScreenshot || activeScreenshot) && (
+            <div className="active-attachment">
+              <img
+                src={(attachedScreenshot || activeScreenshot)?.url}
+                alt="Attachment"
               />
+              <button
+                className="remove-attachment"
+                onClick={() => {
+                  setAttachedScreenshot(null);
+                  setActiveScreenshot(null);
+                }}
+              >
+                ✕
+              </button>
             </div>
           )}
-        </div>
-      )}
 
-      {/* Screenshot anexado */}
-      {(attachedScreenshot || activeScreenshot) && (
-        <div
-          style={{
-            padding: '10px',
-            borderTop: '1px solid #444',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '10px',
-          }}
-        >
-          <img
-            src={(attachedScreenshot || activeScreenshot)?.url}
-            alt="Screenshot anexado"
-            style={{
-              width: '60px',
-              height: '60px',
-              objectFit: 'cover',
-              borderRadius: '4px',
-            }}
-          />
-          <div style={{ flex: 1, fontSize: '12px', color: '#999' }}>
-            {attachedScreenshot ? 'Screenshot anexado' : 'Screenshot ativo'}
+          <div className="input-row">
+            <div className="input-actions">
+              <button
+                className="action-btn"
+                onClick={handleScreenshot}
+                title="Capturar área"
+              >
+                📷
+              </button>
+              <button
+                className="action-btn"
+                onClick={handleFullscreenScreenshot}
+                title="Capturar tela inteira"
+              >
+                🖥️
+              </button>
+            </div>
+
+            <textarea
+              ref={textareaRef}
+              className="chat-input"
+              placeholder="Envie uma mensagem..."
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={handleKeyDown}
+              rows={1}
+            />
+
+            <button
+              className={`action-btn send-btn ${input.trim() ? 'active' : ''}`}
+              onClick={handleSend}
+              disabled={!input.trim() && !attachedScreenshot && !activeScreenshot}
+            >
+              ➤
+            </button>
           </div>
-          <button
-            onClick={() => {
-              if (attachedScreenshot?.url) {
-                URL.revokeObjectURL(attachedScreenshot.url);
-              }
-              if (activeScreenshot?.url) {
-                URL.revokeObjectURL(activeScreenshot.url);
-              }
-              setAttachedScreenshot(null);
-              setActiveScreenshot(null);
-              screenshotSessionIdRef.current = null;
-            }}
-            style={{
-              padding: '4px 8px',
-              backgroundColor: '#d32f2f',
-              color: '#fff',
-              border: 'none',
-              borderRadius: '4px',
-              cursor: 'pointer',
-              fontSize: '12px',
-            }}
-          >
-            Remover
-          </button>
-        </div>
-      )}
-
-      {/* Input */}
-      <div
-        style={{
-          padding: '12px',
-          borderTop: '1px solid #444',
-          WebkitAppRegion: 'no-drag',
-          position: 'relative',
-          zIndex: 100,
-        }}
-        onMouseDown={(e) => e.stopPropagation()}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div style={{ display: 'flex', gap: '5px', marginBottom: '5px' }}>
-          <button
-            onClick={handleScreenshot}
-            style={{
-              padding: '8px 12px',
-              backgroundColor: '#2e7d32',
-              color: '#fff',
-              border: 'none',
-              borderRadius: '4px',
-              cursor: 'pointer',
-              fontSize: '12px',
-            }}
-            title="Anexar Screenshot"
-            type="button"
-          >
-            📷 Screenshot
-          </button>
-          <button
-            onClick={handleFullscreenScreenshot}
-            style={{
-              padding: '8px 12px',
-              backgroundColor: '#455a64',
-              color: '#fff',
-              border: 'none',
-              borderRadius: '4px',
-              cursor: 'pointer',
-              fontSize: '12px',
-            }}
-            title="Capturar tela inteira"
-            type="button"
-          >
-            🖥️ Tela inteira
-          </button>
-          {templates.length > 0 && (
-            <div style={{ display: 'flex', gap: '5px', flexWrap: 'wrap' }}>
-              {templates.slice(0, 4).map((template) => (
-                <button
-                  key={template.id}
-                  type="button"
-                  onClick={() => setInput(template.promptText)}
-                  style={{
-                    padding: '6px 8px',
-                    backgroundColor: '#2d2d2d',
-                    color: '#fff',
-                    border: '1px solid #444',
-                    borderRadius: '4px',
-                    cursor: 'pointer',
-                    fontSize: '11px',
-                  }}
-                  title={template.name}
-                >
-                  {template.name}
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
-        <div style={{ display: 'flex', gap: '5px', WebkitAppRegion: 'no-drag' }}>
-          <textarea
-            ref={textareaRef}
-            value={input}
-            onChange={(e) => {
-              const newValue = e.target.value;
-              console.log('onChange triggered, new value:', newValue);
-              setInput(newValue);
-            }}
-            onFocus={(e) => {
-              console.log('Textarea focused');
-              e.stopPropagation();
-            }}
-            onBlur={(e) => {
-              console.log('Textarea blurred');
-              e.stopPropagation();
-            }}
-            onClick={(e) => {
-              console.log('Textarea clicked');
-              e.stopPropagation();
-              e.currentTarget.focus();
-            }}
-            onMouseDown={(e) => {
-              console.log('Textarea mouseDown');
-              e.stopPropagation();
-            }}
-            onKeyDown={(e) => {
-              console.log('KeyDown pressed:', e.key, 'value:', e.currentTarget.value);
-              e.stopPropagation();
-              if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault();
-                handleSend();
-              }
-            }}
-            onKeyUp={(e) => {
-              console.log('KeyUp pressed:', e.key);
-              e.stopPropagation();
-            }}
-            onInput={(e) => {
-              console.log('onInput triggered');
-              const target = e.target as HTMLTextAreaElement;
-              setInput(target.value);
-            }}
-            placeholder="Digite sua mensagem..."
-            disabled={isAnalyzing}
-            autoFocus={false}
-            spellCheck={true}
-            style={{
-              flex: 1,
-              minHeight: '60px',
-              padding: '8px',
-              borderRadius: '4px',
-              border: '1px solid #444',
-              backgroundColor: '#1e1e1e',
-              color: '#e0e0e0',
-              fontSize: '14px',
-              fontFamily: 'inherit',
-              resize: 'vertical',
-              outline: 'none',
-              WebkitAppRegion: 'no-drag',
-              cursor: 'text',
-              pointerEvents: 'auto',
-              boxSizing: 'border-box',
-            }}
-          />
-          <button
-            onClick={handleSend}
-            disabled={(!input.trim() && !attachedScreenshot && !activeScreenshot) || isAnalyzing}
-            style={{
-              padding: '8px 16px',
-              backgroundColor: '#1976d2',
-              color: '#fff',
-              border: 'none',
-              borderRadius: '4px',
-              cursor: (!input.trim() && !attachedScreenshot && !activeScreenshot) || isAnalyzing ? 'not-allowed' : 'pointer',
-              opacity: (!input.trim() && !attachedScreenshot && !activeScreenshot) || isAnalyzing ? 0.5 : 1,
-              alignSelf: 'flex-end',
-            }}
-          >
-            Enviar
-          </button>
         </div>
       </div>
-
-      {/* Modal de Configurações */}
-      {showConfig && (
-        <div
-          style={{
-            position: 'fixed',
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            backgroundColor: 'rgba(0, 0, 0, 0.8)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            zIndex: 1000,
-          }}
-          onClick={() => setShowConfig(false)}
-        >
-          <div
-            style={{
-              backgroundColor: '#1e1e1e',
-              padding: '20px',
-              borderRadius: '8px',
-              maxWidth: '500px',
-              width: '90%',
-              border: '1px solid #444',
-            }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <h3 style={{ marginTop: 0 }}>Configurações do Chat</h3>
-
-            {config && (
-              <>
-                <div style={{ marginBottom: '15px' }}>
-                  <label style={{ display: 'block', marginBottom: '5px' }}>Provedor</label>
-                  <select
-                    value={config.providerId}
-                    onChange={async (e) => {
-                      const newProviderId = e.target.value;
-                      setConfig({ ...config, providerId: newProviderId });
-                      await loadModels(newProviderId);
-                      // Reseta o modelo para o primeiro disponível do novo provider
-                      const newModels = await window.ai.listModels(newProviderId);
-                      if (newModels.length > 0) {
-                        setConfig({ ...config, providerId: newProviderId, modelName: newModels[0].id });
-                      }
-                    }}
-                    style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #444', backgroundColor: '#2d2d2d', color: '#e0e0e0' }}
-                  >
-                    {providers.map((p) => (
-                      <option key={p.id} value={p.id}>
-                        {p.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div style={{ marginBottom: '15px' }}>
-                  <label style={{ display: 'block', marginBottom: '5px' }}>Modelo</label>
-                  <select
-                    value={config.modelName}
-                    onChange={(e) => setConfig({ ...config, modelName: e.target.value })}
-                    style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #444', backgroundColor: '#2d2d2d', color: '#e0e0e0' }}
-                  >
-                    {models.map((m) => (
-                      <option key={m.id} value={m.id}>
-                        {m.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div style={{ marginBottom: '15px' }}>
-                  <label style={{ display: 'block', marginBottom: '5px' }}>Otimização de imagem</label>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: '#e0e0e0' }}>
-                    <input
-                      type="checkbox"
-                      checked={Boolean(config.enableImageOptimization)}
-                      onChange={(e) => setConfig({ ...config, enableImageOptimization: e.target.checked })}
-                    />
-                    Ativar otimização automática
-                  </label>
-                  <div style={{ display: 'flex', gap: '8px', marginTop: '8px', flexWrap: 'wrap' }}>
-                    <div style={{ flex: 1, minWidth: '140px' }}>
-                      <label style={{ display: 'block', marginBottom: '4px', fontSize: '12px' }}>Largura máx (px)</label>
-                      <input
-                        type="number"
-                        value={config.maxImageDimension ?? 1280}
-                        onChange={(e) => setConfig({ ...config, maxImageDimension: Number(e.target.value) || 0 })}
-                        style={{ width: '100%', padding: '6px 8px', borderRadius: '4px', border: '1px solid #444', backgroundColor: '#2d2d2d', color: '#e0e0e0' }}
-                      />
-                    </div>
-                    <div style={{ flex: 1, minWidth: '140px' }}>
-                      <label style={{ display: 'block', marginBottom: '4px', fontSize: '12px' }}>Tamanho máx (MB)</label>
-                      <input
-                        type="number"
-                        value={((config.maxImageBytes ?? 2500000) / 1_000_000).toFixed(1)}
-                        onChange={(e) =>
-                          setConfig({
-                            ...config,
-                            maxImageBytes: Math.max(0, Math.round(Number(e.target.value) * 1_000_000)),
-                          })
-                        }
-                        style={{ width: '100%', padding: '6px 8px', borderRadius: '4px', border: '1px solid #444', backgroundColor: '#2d2d2d', color: '#e0e0e0' }}
-                      />
-                    </div>
-                    <div style={{ flex: 1, minWidth: '140px' }}>
-                      <label style={{ display: 'block', marginBottom: '4px', fontSize: '12px' }}>Qualidade (0-100)</label>
-                      <input
-                        type="number"
-                        value={config.imageQuality ?? 80}
-                        onChange={(e) =>
-                          setConfig({ ...config, imageQuality: Number(e.target.value) || 80 })
-                        }
-                        style={{ width: '100%', padding: '6px 8px', borderRadius: '4px', border: '1px solid #444', backgroundColor: '#2d2d2d', color: '#e0e0e0' }}
-                      />
-                    </div>
-                  </div>
-                </div>
-              </>
-            )}
-
-            <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', marginTop: '20px' }}>
-              <button
-                onClick={() => setShowConfig(false)}
-                style={{
-                  padding: '8px 16px',
-                  backgroundColor: '#666',
-                  color: '#fff',
-                  border: 'none',
-                  borderRadius: '4px',
-                  cursor: 'pointer',
-                }}
-              >
-                Cancelar
-              </button>
-              <button
-                onClick={handleConfigSave}
-                style={{
-                  padding: '8px 16px',
-                  backgroundColor: '#1976d2',
-                  color: '#fff',
-                  border: 'none',
-                  borderRadius: '4px',
-                  cursor: 'pointer',
-                }}
-              >
-                Salvar
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
-}
+};

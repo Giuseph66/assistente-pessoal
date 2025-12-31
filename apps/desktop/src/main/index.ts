@@ -255,11 +255,13 @@ app.whenReady().then(async () => {
     });
 
     ipcMain.on('window:minimize', (event) => {
+        if (event.sender.isDestroyed()) return;
         const win = BrowserWindow.fromWebContents(event.sender);
         win?.minimize();
     });
 
     ipcMain.on('window:maximize', (event) => {
+        if (event.sender.isDestroyed()) return;
         const win = BrowserWindow.fromWebContents(event.sender);
         if (win?.isMaximized()) {
             win.unmaximize();
@@ -269,6 +271,7 @@ app.whenReady().then(async () => {
     });
 
     ipcMain.on('window:close', (event) => {
+        if (event.sender.isDestroyed()) return;
         const win = BrowserWindow.fromWebContents(event.sender);
         win?.close();
     });
