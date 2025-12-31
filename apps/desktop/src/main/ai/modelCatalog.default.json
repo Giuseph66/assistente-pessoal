@@ -8,14 +8,119 @@
           "name": "Gemini 2.5 Flash",
           "supportsVision": true,
           "maxTokens": 8192,
-          "supportsStreaming": false
+          "supportsStreaming": false,
+          "metadata": {
+            "category": "Modelos de saida de texto"
+          }
         },
         {
           "id": "gemini-2.5-flash-lite",
           "name": "Gemini 2.5 Flash Lite",
           "supportsVision": true,
           "maxTokens": 8192,
-          "supportsStreaming": false
+          "supportsStreaming": false,
+          "metadata": {
+            "category": "Modelos de saida de texto"
+          }
+        },
+        {
+          "id": "gemini-2.5-flash-tts",
+          "name": "Gemini 2.5 Flash TTS",
+          "supportsVision": true,
+          "supportsStreaming": false,
+          "metadata": {
+            "category": "Modelos generativos multimodais"
+          }
+        },
+        {
+          "id": "gemini-3-flash",
+          "name": "Gemini 3 Flash",
+          "supportsVision": true,
+          "supportsStreaming": false,
+          "metadata": {
+            "category": "Modelos de saida de texto"
+          }
+        },
+        {
+          "id": "gemini-robotics-er-1.5-preview",
+          "name": "Gemini Robotics ER 1.5 Preview",
+          "supportsVision": false,
+          "supportsStreaming": false,
+          "metadata": {
+            "category": "Outros modelos"
+          }
+        },
+        {
+          "id": "gemma-3-12b",
+          "name": "Gemma 3 12B",
+          "supportsVision": false,
+          "supportsStreaming": false,
+          "metadata": {
+            "category": "Outros modelos"
+          }
+        },
+        {
+          "id": "gemma-3-1b",
+          "name": "Gemma 3 1B",
+          "supportsVision": false,
+          "supportsStreaming": false,
+          "metadata": {
+            "category": "Outros modelos"
+          }
+        },
+        {
+          "id": "gemma-3-27b",
+          "name": "Gemma 3 27B",
+          "supportsVision": false,
+          "supportsStreaming": false,
+          "metadata": {
+            "category": "Outros modelos"
+          }
+        },
+        {
+          "id": "gemma-3-2b",
+          "name": "Gemma 3 2B",
+          "supportsVision": false,
+          "supportsStreaming": false,
+          "metadata": {
+            "category": "Outros modelos"
+          }
+        },
+        {
+          "id": "gemma-3-4b",
+          "name": "Gemma 3 4B",
+          "supportsVision": false,
+          "supportsStreaming": false,
+          "metadata": {
+            "category": "Outros modelos"
+          }
+        },
+        {
+          "id": "gemini-2.5-flash-native-audio-dialog",
+          "name": "Gemini 2.5 Flash Native Audio Dialog",
+          "supportsVision": false,
+          "supportsStreaming": false,
+          "metadata": {
+            "category": "API Live"
+          }
+        },
+        {
+          "id": "gemini-2.5-flash-native-audio-preview-12-2025",
+          "name": "Gemini 2.5 Flash Native Audio Preview 12-2025",
+          "supportsVision": false,
+          "supportsStreaming": false,
+          "metadata": {
+            "category": "API Live (preview)"
+          }
+        },
+        {
+          "id": "gemini-live-2.5-flash-preview",
+          "name": "Gemini Live 2.5 Flash Preview",
+          "supportsVision": false,
+          "supportsStreaming": false,
+          "metadata": {
+            "category": "API Live (preview)"
+          }
         }
       ]
     },

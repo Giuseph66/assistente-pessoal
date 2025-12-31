@@ -6,6 +6,8 @@ import {
   STTFinalEvent,
   SystemAudioSourceInfo,
 } from '@ricky/shared';
+import { GeminiIcon, OpenAIIcon, OllamaIcon, ProviderIcon } from '../Icons';
+import { useSharedInputValue } from '../../store/sharedInputStore';
 
 interface Message {
   id: string;
@@ -25,7 +27,7 @@ const defaultStatus: STTStatus = { state: 'idle' };
 
 export const AIChatPanel: React.FC<AIChatPanelProps> = ({ sessionId }) => {
   const [messages, setMessages] = useState<Message[]>([]);
-  const [inputValue, setInputValue] = useState('');
+  const [inputValue, setInputValue] = useSharedInputValue();
   const [isTyping, setIsTyping] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -43,11 +45,14 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ sessionId }) => {
 
   // AI Chat States
   const [activePersonality, setActivePersonality] = useState<any | null>(null);
+  const [currentProviderId, setCurrentProviderId] = useState<string>('gemini');
   const [isLoading, setIsLoading] = useState(false);
   const [progress, setProgress] = useState(0);
   const [currentSessionId, setCurrentSessionId] = useState<number | null>(sessionId || null);
   const currentSessionIdRef = useRef<number | null>(sessionId || null);
   const suppressStartedRef = useRef<{ prompt: string; sessionId: number | null } | null>(null);
+  const partialStateRef = useRef({ mic: '', micAt: 0, system: '', systemAt: 0 });
+  const inputResizeRef = useRef<number | null>(null);
 
   const mapMessages = (rows: any[]): Message[] =>
     rows
@@ -77,9 +82,34 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ sessionId }) => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
 
+  const resizeInput = () => {
+    const el = inputRef.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    const maxHeight = 200;
+    const next = Math.min(el.scrollHeight, maxHeight);
+    el.style.height = `${next}px`;
+    el.style.overflowY = el.scrollHeight > maxHeight ? 'auto' : 'hidden';
+  };
+
   useEffect(() => {
     scrollToBottom();
   }, [messages]);
+
+  useEffect(() => {
+    if (inputResizeRef.current) {
+      window.cancelAnimationFrame(inputResizeRef.current);
+    }
+    inputResizeRef.current = window.requestAnimationFrame(() => {
+      resizeInput();
+    });
+    return () => {
+      if (inputResizeRef.current) {
+        window.cancelAnimationFrame(inputResizeRef.current);
+        inputResizeRef.current = null;
+      }
+    };
+  }, [inputValue, systemSttPartial, micSttPartial]);
 
   // Load initial messages or mock data
   useEffect(() => {
@@ -103,19 +133,77 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ sessionId }) => {
     loadConfigurations();
   }, []);
 
+  // Poll for AI config changes to update provider icon in real-time
+  useEffect(() => {
+    const updateProvider = async () => {
+      if (window.ai) {
+        try {
+          const config = await window.ai.getConfig();
+          if (config?.providerId && config.providerId !== currentProviderId) {
+            setCurrentProviderId(config.providerId);
+          }
+        } catch (error) {
+          console.error('Failed to update provider:', error);
+        }
+      }
+    };
+
+    // Update immediately
+    updateProvider();
+
+    // Poll every 2 seconds to catch real-time changes
+    const interval = setInterval(updateProvider, 2000);
+
+    return () => clearInterval(interval);
+  }, [currentProviderId]);
+
   const loadConfigurations = async () => {
     try {
-      // Load active personality
       if (window.ai) {
+        // Load active personality
         const personalityResult = await window.ai.getActivePersonality();
         if (personalityResult?.promptId) {
           const templates = await window.ai.getPromptTemplates('personality');
           const active = templates.find((t: any) => t.id === personalityResult.promptId);
           setActivePersonality(active || null);
         }
+        
+        // Load current AI provider
+        const config = await window.ai.getConfig();
+        if (config?.providerId) {
+          setCurrentProviderId(config.providerId);
+        }
       }
     } catch (error) {
       console.error('Failed to load configurations:', error);
+    }
+  };
+
+  // Helper function to get the correct icon based on provider
+  const getProviderIcon = (providerId: string) => {
+    switch (providerId) {
+      case 'gemini':
+        return <GeminiIcon size={18} />;
+      case 'openai':
+        return (
+          <ProviderIcon size={18} viewBox="0 0 24 24">
+            <defs>
+              <linearGradient id="openai-gradient-white" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stopColor="#ffffff" />
+                <stop offset="100%" stopColor="#ffffff" />
+              </linearGradient>
+            </defs>
+            <path
+              d="M22.2819 9.8211a5.9847 5.9847 0 0 0-.5157-4.9108 6.0462 6.0462 0 0 0-6.5098-2.9A6.0651 6.0651 0 0 0 4.9807 4.1818a5.9847 5.9847 0 0 0-3.9977 2.9 6.0462 6.0462 0 0 0 .7427 7.0966 5.98 5.98 0 0 0 .511 4.9107 6.051 6.051 0 0 0 6.5146 2.9001A5.9847 5.9847 0 0 0 13.2599 24a6.0557 6.0557 0 0 0 5.7718-4.2058 5.9894 5.9894 0 0 0 3.9977-2.9001 6.0557 6.0557 0 0 0-.7475-7.0729zm-9.022 12.6081a4.4755 4.4755 0 0 1-2.8764-1.0408l.1419-.0804 4.7783-2.7582a.7948.7948 0 0 0 .3927-.6813v-6.7369l2.02 1.1686a.071.071 0 0 1 .038.052v5.5826a4.504 4.504 0 0 1-4.4945 4.4944zm-9.6607-4.1254a4.4708 4.4708 0 0 1-.5346-3.0137l.142.0852 4.783 2.7582a.7712.7712 0 0 0 .7806 0l5.8428-3.3685v2.3324a.0804.0804 0 0 1-.0332.0615L9.74 19.9502a4.4992 4.4992 0 0 1-6.1408-1.6464zM2.3408 7.8956a4.485 4.485 0 0 1 2.3655-1.9728V11.6a.7664.7664 0 0 0 .3879.6765l5.8144 3.3543-2.0201 1.1685a.0757.0757 0 0 1-.071 0l-4.8303-2.7865A4.504 4.504 0 0 1 2.3408 7.872zm16.5963 3.8558L13.1038 8.364 15.1192 7.2a.0757.0757 0 0 1 .071 0l4.8303 2.7913a4.4944 4.4944 0 0 1-.6765 8.1042v-5.6772a.79.79 0 0 0-.407-.667zm2.0107-3.0231l-.142-.0852-4.7735-2.7818a.7759.7759 0 0 0-.7854 0L9.409 9.2297V6.8974a.0662.0662 0 0 1 .0284-.0615l4.8303-2.7866a4.4992 4.4992 0 0 1 6.6802 4.66zM8.3065 12.863l-2.02-1.1638a.0804.0804 0 0 1-.038-.0567V6.0742a4.4992 4.4992 0 0 1 7.3757-3.4537l-.142.0805L8.704 5.459a.7948.7948 0 0 0-.3927.6813zm1.0976-2.3654l2.602-1.4998 2.6069 1.4998v2.9994l-2.5974 1.4997-2.6067-1.4997Z"
+              fill="url(#openai-gradient-white)"
+            />
+          </ProviderIcon>
+        );
+      case 'ollama':
+      case 'local':
+        return <OllamaIcon size={18} />;
+      default:
+        return <GeminiIcon size={18} />;
     }
   };
 
@@ -227,32 +315,153 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ sessionId }) => {
     if (!text) return '';
     // Remove <UNK>, <unk>, <UNK>, etc. (case insensitive) and surrounding spaces
     let cleaned = text.replace(/<UNK>/gi, '');
+    cleaned = cleaned.replace(/<noise>/gi, '');
+    cleaned = cleaned.replace(/<silence>/gi, '');
     // Remove multiple spaces and trim
     cleaned = cleaned.replace(/\s+/g, ' ').trim();
+    if (/^[\.\,\!\?\:\;]+$/.test(cleaned)) {
+      return '';
+    }
     return cleaned;
+  };
+
+  const longestCommonPrefixLength = (a: string, b: string): number => {
+    const max = Math.min(a.length, b.length);
+    let i = 0;
+    while (i < max && a[i] === b[i]) i += 1;
+    return i;
+  };
+
+  const getStablePartial = (source: 'mic' | 'system', nextText: string): string => {
+    const state = partialStateRef.current;
+    const prevText = source === 'mic' ? state.mic : state.system;
+    const prevAt = source === 'mic' ? state.micAt : state.systemAt;
+    const now = Date.now();
+
+    if (!nextText) {
+      if (source === 'mic') {
+        state.mic = '';
+        state.micAt = now;
+      } else {
+        state.system = '';
+        state.systemAt = now;
+      }
+      return '';
+    }
+
+    if (!prevText) {
+      if (source === 'mic') {
+        state.mic = nextText;
+        state.micAt = now;
+      } else {
+        state.system = nextText;
+        state.systemAt = now;
+      }
+      return nextText;
+    }
+
+    if (nextText === prevText) {
+      return prevText;
+    }
+
+    if (nextText.startsWith(prevText)) {
+      if (source === 'mic') {
+        state.mic = nextText;
+        state.micAt = now;
+      } else {
+        state.system = nextText;
+        state.systemAt = now;
+      }
+      return nextText;
+    }
+
+    if (prevText.startsWith(nextText)) {
+      return prevText;
+    }
+
+    const prefixLen = longestCommonPrefixLength(prevText, nextText);
+    const prefixRatio = prefixLen / Math.max(prevText.length, nextText.length);
+    if (prefixLen >= 6 && prefixRatio >= 0.6) {
+      const merged = prevText.slice(0, prefixLen) + nextText.slice(prefixLen);
+      if (source === 'mic') {
+        state.mic = merged;
+        state.micAt = now;
+      } else {
+        state.system = merged;
+        state.systemAt = now;
+      }
+      return merged;
+    }
+
+    if (now - prevAt > 900) {
+      if (source === 'mic') {
+        state.mic = nextText;
+        state.micAt = now;
+      } else {
+        state.system = nextText;
+        state.systemAt = now;
+      }
+      return nextText;
+    }
+
+    return prevText;
+  };
+
+  const clearPartialCache = (source: 'mic' | 'system') => {
+    if (source === 'mic') {
+      partialStateRef.current.mic = '';
+      partialStateRef.current.micAt = 0;
+    } else {
+      partialStateRef.current.system = '';
+      partialStateRef.current.systemAt = 0;
+    }
+  };
+
+  const mergeFinalText = (currentText: string, nextText: string): string => {
+    const base = currentText.trim();
+    const next = nextText.trim();
+    if (!base) return next;
+    if (!next) return base;
+
+    const baseLower = base.toLowerCase();
+    const nextLower = next.toLowerCase();
+    const maxOverlap = Math.min(40, Math.min(baseLower.length, nextLower.length));
+    let overlap = 0;
+    for (let i = maxOverlap; i > 0; i -= 1) {
+      if (baseLower.endsWith(nextLower.slice(0, i))) {
+        overlap = i;
+        break;
+      }
+    }
+    const suffix = next.slice(overlap).trimStart();
+    if (!suffix) return base;
+    return `${base}${base.endsWith(' ') ? '' : ' '}${suffix}`;
   };
 
   // STT Microphone listeners
   useEffect(() => {
     if (!window.stt) return;
     window.stt.getStatus().then((status) => setMicSttStatus(status || defaultStatus));
-    const offStatus = window.stt.onStatus((status) => setMicSttStatus(status));
-    const offPartial = window.stt.onPartial((event: STTPartialEvent) => {
-      const cleanedText = cleanSttText(event.text);
-      if (cleanedText) {
-        setMicSttPartial(cleanedText);
-      } else {
+    const offStatus = window.stt.onStatus((status) => {
+      setMicSttStatus(status);
+      if (status.state === 'idle' || status.state === 'error') {
+        clearPartialCache('mic');
         setMicSttPartial(null);
       }
+    });
+    const offPartial = window.stt.onPartial((event: STTPartialEvent) => {
+      const cleanedText = cleanSttText(event.text);
+      const stableText = getStablePartial('mic', cleanedText);
+      setMicSttPartial(stableText || null);
       setSttError(null);
     });
     const offFinal = window.stt.onFinal((event: STTFinalEvent) => {
       const cleanedText = cleanSttText(event.text);
       if (cleanedText.trim()) {
-        const currentText = inputValue.trim();
-        const newText = currentText ? `${currentText} ${cleanedText}` : cleanedText;
+        const newText = mergeFinalText(inputValue, cleanedText);
         setInputValue(newText);
         setMicSttPartial(null);
+        clearPartialCache('mic');
         // Focus input and move cursor to end
         setTimeout(() => {
           if (inputRef.current) {
@@ -285,27 +494,26 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ sessionId }) => {
       setSystemSttStatus(status);
       if (status.state === 'idle') {
         setSystemSttPartial(null);
+        clearPartialCache('system');
       }
       if (status.state === 'error') {
         setSystemSttPartial(null);
+        clearPartialCache('system');
       }
     });
     const offPartial = window.systemStt.onPartial((event: STTPartialEvent) => {
       const cleanedText = cleanSttText(event.text);
-      if (cleanedText) {
-        setSystemSttPartial(cleanedText);
-      } else {
-        setSystemSttPartial(null);
-      }
+      const stableText = getStablePartial('system', cleanedText);
+      setSystemSttPartial(stableText || null);
       setSttError(null);
     });
     const offFinal = window.systemStt.onFinal((event: STTFinalEvent) => {
       const cleanedText = cleanSttText(event.text);
       if (cleanedText.trim()) {
-        const currentText = inputValue.trim();
-        const newText = currentText ? `${currentText} ${cleanedText}` : cleanedText;
+        const newText = mergeFinalText(inputValue, cleanedText);
         setInputValue(newText);
         setSystemSttPartial(null);
+        clearPartialCache('system');
         // Focus input and move cursor to end
         setTimeout(() => {
           if (inputRef.current) {
@@ -654,7 +862,11 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ sessionId }) => {
         {messages.map((msg) => (
           <div key={msg.id} className={`message-row ${msg.role}`}>
             <div className="message-bubble">
-              {msg.role === 'assistant' && <div className="avatar">✨</div>}
+              {msg.role === 'assistant' && (
+                <div className="avatar">
+                  {getProviderIcon(currentProviderId)}
+                </div>
+              )}
               <div className="message-content">
                 {msg.imageBase64 && (
                   <div className="message-image">
@@ -669,7 +881,9 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ sessionId }) => {
         {isTyping && (
           <div className="message-row assistant">
             <div className="message-bubble typing">
-              <div className="avatar">✨</div>
+              <div className="avatar">
+                {getProviderIcon(currentProviderId)}
+              </div>
               <div className="typing-dots">
                 <span>.</span><span>.</span><span>.</span>
               </div>

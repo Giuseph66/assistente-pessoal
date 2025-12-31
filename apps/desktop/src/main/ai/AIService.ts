@@ -3,6 +3,7 @@ import { ApiKeyPool, ApiError } from './ApiKeyPool';
 import { KeyStorage } from './storage/KeyStorage';
 import { getAIProviderManager } from './AIProviderManager';
 import { preprocessImage } from './utils/imagePreprocessor';
+import { normalizeAIConfigPatch } from './utils/aiConfigNormalization';
 import {
   VisionRequest,
   VisionResponse,
@@ -54,7 +55,23 @@ export class AIService {
    * Atualiza configuração
    */
   updateConfig(config: Partial<AIConfig>): void {
-    this.config = { ...this.config, ...config };
+    const current = this.getConfig();
+    const { normalizedPatch, didChangeModel } = normalizeAIConfigPatch(current, config);
+
+    if (didChangeModel) {
+      const nextProvider = (normalizedPatch.providerId ?? current.providerId) as AIProviderId;
+      logger.warn(
+        {
+          providerId: nextProvider,
+          oldModelName: current.modelName,
+          newModelName: normalizedPatch.modelName,
+          patch: config,
+        },
+        'Model adjusted to match provider'
+      );
+    }
+
+    this.config = { ...this.config, ...normalizedPatch };
     this.keyPool = new ApiKeyPool(this.db, this.keyStorage, this.config.fallbackCooldownMinutes);
   }
 
@@ -356,6 +373,17 @@ export class AIService {
       // Obtém próxima key disponível
       const apiKey = this.keyPool.getNextKey(this.config.providerId);
       if (!apiKey) {
+        const keys = this.db.getAIApiKeys(this.config.providerId);
+        const hasInsufficientQuota = keys.some((k) => k.last_error_code === 'insufficient_quota');
+        if (hasInsufficientQuota) {
+          throw new Error(
+            'Nenhuma chave disponível: conta sem quota (insufficient_quota). Verifique billing/créditos.'
+          );
+        }
+        const hasCooldown = keys.some((k) => k.status === 'cooldown');
+        if (hasCooldown) {
+          throw new Error('Nenhuma chave disponível: todas estão em cooldown.');
+        }
         throw new Error('No available API keys');
       }
 
@@ -436,6 +464,17 @@ export class AIService {
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
       const apiKey = this.keyPool.getNextKey(this.config.providerId);
       if (!apiKey) {
+        const keys = this.db.getAIApiKeys(this.config.providerId);
+        const hasInsufficientQuota = keys.some((k) => k.last_error_code === 'insufficient_quota');
+        if (hasInsufficientQuota) {
+          throw new Error(
+            'Nenhuma chave disponível: conta sem quota (insufficient_quota). Verifique billing/créditos.'
+          );
+        }
+        const hasCooldown = keys.some((k) => k.status === 'cooldown');
+        if (hasCooldown) {
+          throw new Error('Nenhuma chave disponível: todas estão em cooldown.');
+        }
         throw new Error('No available API keys');
       }
 

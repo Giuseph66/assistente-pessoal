@@ -1,6 +1,7 @@
 import React from 'react';
 import { CustomSelect } from './CustomSelect';
 import { VoskOfflineSection } from './VoskOfflineSection';
+import { GeminiIcon, OpenAIIcon, OllamaIcon } from '../../Icons';
 
 interface ApiSectionProps {
     apiProvider: 'google' | 'openai' | 'local' | 'vosk';
@@ -116,7 +117,7 @@ export const ApiSection: React.FC<ApiSectionProps> = ({
                 ) : apiProvider === 'local' ? (
                     <div className="local-llm-placeholder">
                         <div className="placeholder-icon">
-                            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M20 16V8a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2z" /><path d="M9 13v2" /><path d="M15 13v2" /><path d="M12 9v2" /></svg>
+                            <OllamaIcon size={48} />
                         </div>
                         <h3>Integração Local em Breve</h3>
                         <p>Estamos trabalhando para suportar Ollama, LM Studio e outras LLMs rodando localmente na sua máquina.</p>
@@ -131,9 +132,11 @@ export const ApiSection: React.FC<ApiSectionProps> = ({
                                 <div className="provider-info-main">
                                     <div className={`provider-icon-circle ${apiProvider}`}>
                                         {apiProvider === 'google' ? (
-                                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" /></svg>
+                                            <GeminiIcon size={24} />
+                                        ) : apiProvider === 'openai' ? (
+                                            <OpenAIIcon size={24} />
                                         ) : (
-                                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 2v20M2 12h20" /></svg>
+                                            <OllamaIcon size={24} />
                                         )}
                                     </div>
                                     <div className="provider-text-details">

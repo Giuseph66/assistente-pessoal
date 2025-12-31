@@ -11,12 +11,20 @@ import {
   AIProvider,
   AIModel,
   AIApiKey,
-  AISession,
   AIMessage,
   AIRun,
   PromptTemplate,
 } from '@ricky/shared';
 import { Migrator } from './database/migrator';
+
+export interface AISessionRecord {
+  id: number;
+  screenshotId: number | null;
+  providerId: string;
+  modelName: string;
+  summary?: string | null;
+  createdAt: number;
+}
 
 /**
  * Gerenciador de banco de dados SQLite com migrations
@@ -510,26 +518,34 @@ export class DatabaseManager {
   /**
    * Cria uma nova sessão de análise
    */
-  saveAISession(session: Omit<AISession, 'id' | 'created_at'>): number {
+  saveAISession(session: Omit<AISessionRecord, 'id' | 'createdAt'>): number {
     const result = this.db
       .prepare('INSERT INTO ai_sessions (screenshot_id, provider_id, model_name, summary, created_at) VALUES (?, ?, ?, ?, ?)')
-      .run(session.screenshotId || null, session.providerId, session.modelName, session.summary || null, Date.now());
+      .run(session.screenshotId ?? null, session.providerId, session.modelName, session.summary ?? null, Date.now());
     return result.lastInsertRowid as number;
   }
 
   /**
    * Obtém sessões de um screenshot
    */
-  getAISessions(screenshotId: number): AISession[] {
-    return this.db
+  getAISessions(screenshotId: number): AISessionRecord[] {
+    const rows = this.db
       .prepare('SELECT * FROM ai_sessions WHERE screenshot_id = ? ORDER BY created_at DESC')
-      .all(screenshotId) as AISession[];
+      .all(screenshotId);
+    return (rows as any[]).map((s) => ({
+      id: s.id,
+      screenshotId: s.screenshot_id,
+      providerId: s.provider_id,
+      modelName: s.model_name,
+      summary: s.summary,
+      createdAt: s.created_at,
+    }));
   }
 
   /**
    * Obtém sessões por data (timestamp start/end)
    */
-  getAISessionsByDate(start: number, end: number, searchQuery?: string): AISession[] {
+  getAISessionsByDate(start: number, end: number, searchQuery?: string): AISessionRecord[] {
     let rows;
     if (searchQuery) {
       const search = `%${searchQuery}%`;
@@ -554,20 +570,20 @@ export class DatabaseManager {
         .all(start, end);
     }
 
-    return rows.map((s: any) => ({
+    return (rows as any[]).map((s) => ({
       id: s.id,
       screenshotId: s.screenshot_id,
       providerId: s.provider_id,
       modelName: s.model_name,
       summary: s.summary,
-      createdAt: s.created_at
-    })) as AISession[];
+      createdAt: s.created_at,
+    }));
   }
 
   /**
    * Obtém uma sessão por ID
    */
-  getAISessionById(id: number): AISession | null {
+  getAISessionById(id: number): AISessionRecord | null {
     const row = this.db.prepare('SELECT * FROM ai_sessions WHERE id = ?').get(id);
     if (!row) return null;
     const s = row as any;
@@ -578,7 +594,7 @@ export class DatabaseManager {
       modelName: s.model_name,
       summary: s.summary,
       createdAt: s.created_at
-    } as AISession;
+    } as AISessionRecord;
   }
 
   /**

@@ -20,6 +20,7 @@ export class GeminiLiveTranscriptionProvider implements LiveTranscriptionProvide
   private closing = false;
   private reconnectAttempts = 0;
   private partialBuffer = '';
+  private lastPartialEmitted = '';
   private firstAudioAt: number | null = null;
   private firstPartialAt: number | null = null;
 
@@ -33,6 +34,7 @@ export class GeminiLiveTranscriptionProvider implements LiveTranscriptionProvide
     this.closing = false;
     this.reconnectAttempts = 0;
     this.partialBuffer = '';
+    this.lastPartialEmitted = '';
     this.firstAudioAt = null;
     this.firstPartialAt = null;
 
@@ -54,7 +56,9 @@ export class GeminiLiveTranscriptionProvider implements LiveTranscriptionProvide
       this.emitFinal(this.partialBuffer);
       this.partialBuffer = '';
     }
+    this.lastPartialEmitted = '';
     this.chunker?.flush((frame) => this.sendAudioFrame(frame));
+    this.sendJson({ realtimeInput: { audioStreamEnd: true } });
     if (this.ws) {
       this.ws.close();
       this.ws = null;
@@ -94,10 +98,11 @@ export class GeminiLiveTranscriptionProvider implements LiveTranscriptionProvide
   private connect(): void {
     const config = this.config;
     if (!config?.apiKey) return;
-    const modelName = config.modelName || 'gemini-2.0-flash-live';
-    // API key auth (Google AI for Developers): https://ai.google.dev/gemini-api/docs/text-generation
+    const modelName = config.modelName || 'gemini-2.5-flash-native-audio-preview-12-2025';
+    const apiVersion = this.resolveApiVersion(modelName);
+    // API key auth (Google AI for Developers): https://ai.google.dev/gemini-api/docs/live
     const url =
-      `wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService/BidiGenerateContent` +
+      `wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.${apiVersion}.GenerativeService.BidiGenerateContent` +
       `?key=${encodeURIComponent(config.apiKey)}`;
 
     const ws = new WebSocket(url);
@@ -115,22 +120,23 @@ export class GeminiLiveTranscriptionProvider implements LiveTranscriptionProvide
 
   private sendSetup(modelName: string): void {
     // Docs: https://docs.cloud.google.com/vertex-ai/generative-ai/docs/live-api/get-started-websocket
+    const useAudioResponse = this.isAudioModel(modelName);
     const payload = {
       setup: {
         model: `models/${modelName}`,
-        generation_config: {
-          response_modalities: ['TEXT'],
+        generationConfig: {
+          responseModalities: [useAudioResponse ? 'AUDIO' : 'TEXT'],
         },
-        input_audio_transcription: {},
-        realtime_input_config: {
-          automatic_activity_detection: {
+        ...(useAudioResponse ? { inputAudioTranscription: {} } : {}),
+        realtimeInputConfig: {
+          automaticActivityDetection: {
             disabled: false,
-            silence_duration_ms: 500,
-            prefix_padding_ms: 300,
-            end_of_speech_sensitivity: 'END_SENSITIVITY_UNSPECIFIED',
-            start_of_speech_sensitivity: 'START_SENSITIVITY_UNSPECIFIED',
+            silenceDurationMs: 500,
+            prefixPaddingMs: 300,
+            endOfSpeechSensitivity: 'END_SENSITIVITY_UNSPECIFIED',
+            startOfSpeechSensitivity: 'START_SENSITIVITY_UNSPECIFIED',
           },
-          activity_handling: 'ACTIVITY_HANDLING_UNSPECIFIED',
+          activityHandling: 'ACTIVITY_HANDLING_UNSPECIFIED',
         },
       },
     };
@@ -143,10 +149,10 @@ export class GeminiLiveTranscriptionProvider implements LiveTranscriptionProvide
     const data = frame.toString('base64');
     const sampleRate = this.config?.sampleRate || 16000;
     const payload = {
-      realtime_input: {
-        media_chunks: [
+      realtimeInput: {
+        mediaChunks: [
           {
-            mime_type: `audio/pcm;rate=${sampleRate}`,
+            mimeType: `audio/pcm;rate=${sampleRate}`,
             data,
           },
         ],
@@ -160,9 +166,12 @@ export class GeminiLiveTranscriptionProvider implements LiveTranscriptionProvide
     try {
       event = JSON.parse(raw);
     } catch {
+      this.logIncomingMessage(raw, null, 'invalid_json');
       this.emitDebug('gemini: invalid json from server');
       return;
     }
+
+    this.logIncomingMessage(raw, event);
 
     if (event?.error) {
       const message = event?.error?.message || 'Erro no Gemini Live';
@@ -174,18 +183,24 @@ export class GeminiLiveTranscriptionProvider implements LiveTranscriptionProvide
     const inputTranscription = event?.serverContent?.inputTranscription;
     if (inputTranscription?.text) {
       const text = String(inputTranscription.text || '');
-      const finished = Boolean(inputTranscription.finished);
+      const finished = Boolean(
+        inputTranscription.finished || inputTranscription.isFinal || inputTranscription.final
+      );
       if (!this.firstPartialAt) {
         this.firstPartialAt = Date.now();
         if (this.firstAudioAt) {
           this.emitDebug(`gemini:first_partial_ms=${this.firstPartialAt - this.firstAudioAt}`);
         }
       }
-      this.partialBuffer = text;
-      this.emitPartial(text, inputTranscription.languageCode);
+      this.partialBuffer = this.mergeStreamingText(this.partialBuffer, text);
+      const stableText = this.getStablePartial(this.partialBuffer);
+      if (stableText) {
+        this.emitPartial(stableText, inputTranscription.languageCode);
+      }
       if (finished) {
-        this.emitFinal(text, inputTranscription.languageCode);
+        this.emitFinal(this.partialBuffer || text, inputTranscription.languageCode);
         this.partialBuffer = '';
+        this.lastPartialEmitted = '';
       }
       return;
     }
@@ -195,6 +210,7 @@ export class GeminiLiveTranscriptionProvider implements LiveTranscriptionProvide
         this.emitFinal(this.partialBuffer);
         this.partialBuffer = '';
       }
+      this.lastPartialEmitted = '';
       return;
     }
   }
@@ -268,5 +284,126 @@ export class GeminiLiveTranscriptionProvider implements LiveTranscriptionProvide
 
   private emitDebug(message: string): void {
     this.emitter.emit('debug', message);
+  }
+
+  private logIncomingMessage(raw: string, event: any, parseError?: string): void {
+    const rawLength = raw ? raw.length : 0;
+    if (!event) {
+      logger.info(
+        {
+          rawLength,
+          parseError,
+          preview: raw ? raw.slice(0, 200) : '',
+        },
+        'Gemini live message'
+      );
+      return;
+    }
+
+    const inputText = event?.serverContent?.inputTranscription?.text;
+    const outputText = event?.serverContent?.outputTranscription?.text;
+    const modelParts = event?.serverContent?.modelTurn?.parts;
+    logger.info(
+      {
+        rawLength,
+        type: event?.type,
+        hasError: Boolean(event?.error),
+        hasServerContent: Boolean(event?.serverContent),
+        hasInputTranscription: Boolean(inputText),
+        inputTextLen: typeof inputText === 'string' ? inputText.length : 0,
+        inputTextPreview: typeof inputText === 'string' ? inputText.slice(0, 120) : '',
+        hasOutputTranscription: Boolean(outputText),
+        outputTextLen: typeof outputText === 'string' ? outputText.length : 0,
+        hasModelTurn: Boolean(event?.serverContent?.modelTurn),
+        modelParts: Array.isArray(modelParts) ? modelParts.length : 0,
+        turnComplete: Boolean(event?.serverContent?.turnComplete),
+        interrupted: Boolean(event?.serverContent?.interrupted),
+        hasUsageMetadata: Boolean(event?.usageMetadata),
+      },
+      'Gemini live message'
+    );
+  }
+
+  private getStablePartial(text: string): string {
+    if (!text) {
+      this.lastPartialEmitted = '';
+      return '';
+    }
+    if (!this.lastPartialEmitted) {
+      this.lastPartialEmitted = text;
+      return text;
+    }
+    if (text.length >= this.lastPartialEmitted.length) {
+      this.lastPartialEmitted = text;
+      return text;
+    }
+    return this.lastPartialEmitted;
+  }
+
+  private mergeStreamingText(base: string, next: string): string {
+    const incoming = this.normalizeIncomingText(next);
+    if (!incoming) return base;
+    if (!base) return incoming;
+    if (incoming === base) return base;
+
+    if (incoming.startsWith(base)) {
+      return incoming;
+    }
+    if (base.startsWith(incoming)) {
+      return base;
+    }
+    if (base.endsWith(incoming)) {
+      return base;
+    }
+
+    const overlap = this.findOverlap(base, incoming);
+    if (overlap > 0) {
+      return base + incoming.slice(overlap);
+    }
+
+    if (base.endsWith(' ') || incoming.startsWith(' ')) {
+      return base + incoming;
+    }
+
+    if (this.isAlphaNumeric(base.slice(-1)) && this.isAlphaNumeric(incoming[0])) {
+      return base + incoming;
+    }
+
+    return `${base} ${incoming}`;
+  }
+
+  private normalizeIncomingText(text: string): string {
+    if (!text) return '';
+    let cleaned = text.replace(/<noise>/gi, '');
+    cleaned = cleaned.replace(/<silence>/gi, '');
+    cleaned = cleaned.replace(/\s+/g, ' ');
+    if (!cleaned.trim()) return '';
+    return cleaned;
+  }
+
+  private findOverlap(base: string, next: string): number {
+    const max = Math.min(base.length, next.length);
+    for (let size = max; size > 0; size -= 1) {
+      if (base.slice(-size) === next.slice(0, size)) {
+        return size;
+      }
+    }
+    return 0;
+  }
+
+  private isAlphaNumeric(char: string | undefined): boolean {
+    if (!char) return false;
+    return /[\p{L}\p{N}]/u.test(char);
+  }
+
+  private isAudioModel(modelName: string): boolean {
+    return modelName.includes('native-audio') || modelName.includes('audio');
+  }
+
+  private resolveApiVersion(modelName: string): 'v1alpha' | 'v1beta' {
+    if (modelName.includes('preview') || modelName.includes('native-audio')) {
+      return 'v1alpha';
+    }
+    return 'v1beta';
   }
 }

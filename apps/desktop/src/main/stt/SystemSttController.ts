@@ -73,7 +73,7 @@ export class SystemSttController {
         effectiveConfig = { ...storedConfig, sampleRate: 16000 };
       }
     } else if (providerId === 'gemini_live') {
-      modelName = 'gemini-2.0-flash-live';
+      modelName = 'gemini-2.5-flash-native-audio-preview-12-2025';
       if (storedConfig.sampleRate !== 16000) {
         effectiveConfig = { ...storedConfig, sampleRate: 16000 };
       }
@@ -98,7 +98,15 @@ export class SystemSttController {
           : undefined;
 
       if ((providerId === 'openai_realtime_transcribe' || providerId === 'gemini_live') && !apiKey) {
-        const message = `Chave de API nao configurada para ${providerId === 'gemini_live' ? 'Gemini' : 'OpenAI'}`;
+        const hint =
+          providerId === 'openai_realtime_transcribe'
+            ? this.getApiKeyUnavailableReason('openai')
+            : providerId === 'gemini_live'
+            ? this.getApiKeyUnavailableReason('gemini')
+            : null;
+        const message =
+          hint ||
+          `Chave de API nao configurada para ${providerId === 'gemini_live' ? 'Gemini' : 'OpenAI'}`;
         this.setStatus({ state: 'error', message, providerId });
         throw new Error(message);
       }
@@ -240,5 +248,26 @@ export class SystemSttController {
     const apiKey = keyPool.getNextKey(providerId);
     if (!apiKey?.key) return null;
     return { key: apiKey.key, keyId: apiKey.id };
+  }
+
+  private getApiKeyUnavailableReason(providerId: 'openai' | 'gemini'): string | null {
+    if (!this.db) return null;
+    const keys = this.db.getAIApiKeys(providerId);
+    if (!keys || keys.length === 0) return null;
+    const lastError = keys.map((k) => k.last_error_code).find(Boolean);
+    const hasInsufficientQuota = keys.some((k) => k.last_error_code === 'insufficient_quota');
+    const hasCooldown = keys.some((k) => k.status === 'cooldown');
+    const hasDisabled = keys.some((k) => k.status === 'disabled');
+
+    if (hasInsufficientQuota) {
+      return 'Chave OpenAI sem quota (insufficient_quota). Verifique billing/créditos no painel da OpenAI.';
+    }
+    if (hasCooldown) {
+      return 'Nenhuma chave disponível (todas em cooldown). Aguarde o cooldown ou reative uma chave.';
+    }
+    if (hasDisabled) {
+      return `Nenhuma chave disponível (todas desabilitadas). Último erro: ${lastError || 'desconhecido'}`;
+    }
+    return lastError ? `Nenhuma chave disponível. Último erro: ${lastError}` : 'Nenhuma chave disponível.';
   }
 }

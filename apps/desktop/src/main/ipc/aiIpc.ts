@@ -3,6 +3,7 @@ import { DatabaseManager } from '../database';
 import { getAIService, getKeyStorage } from '../ai/AIServiceManager';
 import { getAIProviderManager } from '../ai/AIProviderManager';
 import { ApiKeyPool } from '../ai/ApiKeyPool';
+import { getAIConfigStore } from '../storage/aiConfigStore';
 import {
   AIConfig,
   AIProviderId,
@@ -13,6 +14,7 @@ import {
 import { getLogger } from '@ricky/logger';
 
 const logger = getLogger();
+import { normalizeAIConfigPatch } from '../ai/utils/aiConfigNormalization';
 
 /**
  * Broadcast para todas as janelas
@@ -36,6 +38,7 @@ const broadcast = (channel: string, payload: any) => {
 export function registerAIIpc(db: DatabaseManager): void {
   const keyStorage = getKeyStorage();
   const providerManager = getAIProviderManager();
+  const aiConfigStore = getAIConfigStore();
   let activePersonalityId: number | null = null;
 
   const mapPromptTemplate = (t: any) => ({
@@ -79,8 +82,30 @@ export function registerAIIpc(db: DatabaseManager): void {
 
   ipcMain.handle('ai.saveConfig', async (_event, config: Partial<AIConfig>) => {
     const aiService = getAIService(db);
-    aiService.updateConfig(config);
-    return aiService.getConfig();
+    const current = aiService.getConfig();
+    const { normalizedPatch, didChangeModel } = normalizeAIConfigPatch(current, config);
+    if (didChangeModel) {
+      logger.warn(
+        {
+          oldProviderId: current.providerId,
+          newProviderId: normalizedPatch.providerId ?? current.providerId,
+          oldModelName: current.modelName,
+          newModelName: normalizedPatch.modelName,
+          patch: config,
+        },
+        'Config patch adjusted to match provider'
+      );
+    }
+    aiService.updateConfig(normalizedPatch);
+    const next = aiService.getConfig();
+
+    // Persistir apenas a seleção essencial para restaurar a última IA (provider + modelo)
+    aiConfigStore.setLastConfig({
+      providerId: next.providerId,
+      modelName: next.modelName,
+    });
+
+    return next;
   });
 
   // ========== Providers ==========
@@ -313,10 +338,10 @@ export function registerAIIpc(db: DatabaseManager): void {
     const sessions = db.getAISessions(screenshotId);
     return sessions.map((s) => ({
       id: s.id,
-      screenshotId: s.screenshot_id,
-      providerId: s.provider_id,
-      modelName: s.model_name,
-      createdAt: s.created_at,
+      screenshotId: s.screenshotId,
+      providerId: s.providerId,
+      modelName: s.modelName,
+      createdAt: s.createdAt,
     }));
   });
 

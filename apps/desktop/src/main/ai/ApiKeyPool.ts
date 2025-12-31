@@ -25,6 +25,10 @@ export interface ApiError {
   message: string;
 }
 
+function isInsufficientQuota(error: ApiError): boolean {
+  return error.code === 'insufficient_quota';
+}
+
 /**
  * Pool de API keys com rotação e fallback automático
  */
@@ -146,6 +150,22 @@ export class ApiKeyPool {
     const dbKey = this.db.getAIApiKeyById(keyId);
     if (!dbKey) {
       logger.warn({ keyId }, 'Key not found for markFailure');
+      return;
+    }
+
+    // Para quota insuficiente (ex.: OpenAI 429 insufficient_quota), cooldown não ajuda.
+    // Melhor desabilitar e deixar explícito no UI via last_error_code.
+    if (isInsufficientQuota(error)) {
+      this.db.updateAIApiKey(keyId, {
+        failure_count: dbKey.failure_count + 1,
+        last_error_code: error.code,
+        status: 'disabled',
+        cooldown_until: undefined,
+      });
+      logger.warn(
+        { keyId, alias: dbKey.alias, errorCode: error.code, statusCode: error.statusCode },
+        'Disabled API key due to insufficient quota'
+      );
       return;
     }
 

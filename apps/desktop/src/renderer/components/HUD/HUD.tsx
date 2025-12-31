@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { useSttState } from '../../store/sttStore';
+import { useSharedInputValue } from '../../store/sharedInputStore';
 import './HUD.css';
 
 interface HUDProps {
@@ -40,7 +41,8 @@ export const HUD: React.FC<HUDProps> = ({
     sessionId,
     onSessionSelect
 }) => {
-    const [inputValue, setInputValue] = useState('');
+    const [inputValue, setInputValue] = useSharedInputValue();
+    const [hudPartial, setHudPartial] = useState('');
     const [showSessionDropdown, setShowSessionDropdown] = useState(false);
     const [showPersonalityDropdown, setShowPersonalityDropdown] = useState(false);
     const [sessions, setSessions] = useState<Session[]>([]);
@@ -142,7 +144,10 @@ export const HUD: React.FC<HUDProps> = ({
     useEffect(() => {
         const partialText = sttState.partial?.text;
         if (isSttListening && partialText) {
-            setInputValue(partialText);
+            const cleaned = cleanSttText(partialText);
+            setHudPartial(cleaned);
+        } else {
+            setHudPartial('');
         }
     }, [sttState.partial, isSttListening]);
 
@@ -151,7 +156,12 @@ export const HUD: React.FC<HUDProps> = ({
         if (!latestFinal || latestFinal.ts === lastFinalTsRef.current) return;
         lastFinalTsRef.current = latestFinal.ts;
         if (wasListeningRef.current) {
-            setInputValue(latestFinal.text || '');
+            const cleaned = cleanSttText(latestFinal.text || '');
+            if (cleaned) {
+                const merged = mergeFinalText(inputValueRef.current, cleaned);
+                setInputValue(merged);
+            }
+            setHudPartial('');
         }
     }, [sttState.finals]);
 
@@ -277,12 +287,46 @@ export const HUD: React.FC<HUDProps> = ({
         return name.slice(0, 2).toUpperCase();
     };
 
+    const cleanSttText = (text: string): string => {
+        if (!text) return '';
+        let cleaned = text.replace(/<UNK>/gi, '');
+        cleaned = cleaned.replace(/<noise>/gi, '');
+        cleaned = cleaned.replace(/<silence>/gi, '');
+        cleaned = cleaned.replace(/\s+/g, ' ').trim();
+        if (/^[\.\,\!\?\:\;]+$/.test(cleaned)) {
+            return '';
+        }
+        return cleaned;
+    };
+
+    const mergeFinalText = (currentText: string, nextText: string): string => {
+        const base = currentText.trim();
+        const next = nextText.trim();
+        if (!base) return next;
+        if (!next) return base;
+
+        const baseLower = base.toLowerCase();
+        const nextLower = next.toLowerCase();
+        const maxOverlap = Math.min(40, Math.min(baseLower.length, nextLower.length));
+        let overlap = 0;
+        for (let i = maxOverlap; i > 0; i -= 1) {
+            if (baseLower.endsWith(nextLower.slice(0, i))) {
+                overlap = i;
+                break;
+            }
+        }
+        const suffix = next.slice(overlap).trimStart();
+        if (!suffix) return base;
+        return `${base}${base.endsWith(' ') ? '' : ' '}${suffix}`;
+    };
+
     const handleHudQuestionSend = async () => {
         const prompt = inputValueRef.current.trim();
         if (!prompt || isSendingQuestion) return;
         setIsSendingQuestion(true);
         setInputValue('');
         inputValueRef.current = '';
+        setHudPartial('');
 
         try {
             const config = await window.ai.getConfig();
@@ -327,6 +371,11 @@ export const HUD: React.FC<HUDProps> = ({
         }
         onStartListening();
     };
+
+    const hudDisplayValue =
+        hudPartial && isSttListening
+            ? inputValue + (inputValue && !inputValue.endsWith(' ') ? ' ' : '') + hudPartial
+            : inputValue;
 
     return (
         <div className="hud-container">
@@ -396,8 +445,14 @@ export const HUD: React.FC<HUDProps> = ({
                     <input
                         type="text"
                         placeholder="Perguntar..."
-                        value={inputValue}
-                        onChange={(e) => setInputValue(e.target.value)}
+                        value={hudDisplayValue}
+                        onChange={(e) => {
+                            const newValue = e.target.value;
+                            if (hudPartial) {
+                                setHudPartial('');
+                            }
+                            setInputValue(newValue);
+                        }}
                         onKeyDown={handleHudInputKeyDown}
                         className="hud-input"
                     />

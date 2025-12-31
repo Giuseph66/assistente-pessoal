@@ -11,13 +11,38 @@ Providers ativos (registro interno):
 
 Modelos sugeridos:
 - OpenAI: gpt-4o-transcribe (Realtime Transcription)
-- Gemini: gemini-2.0-flash-live (Live)
+- Gemini: gemini-2.5-flash-native-audio-preview-12-2025 (Live)
 
 Referencias:
-- OpenAI Realtime client events: https://platform.openai.com/docs/api-reference/realtime-beta-client-events
-- OpenAI Voice Agents guide: https://platform.openai.com/docs/guides/voice-agents
+- OpenAI Speech-to-text (Realtime Transcription): https://platform.openai.com/docs/guides/speech-to-text
+- OpenAI Realtime (visao geral): https://platform.openai.com/docs/guides/realtime
 - Gemini Live API (WebSocket): https://docs.cloud.google.com/vertex-ai/generative-ai/docs/live-api/get-started-websocket
 - Gemini API (Google AI for Developers): https://ai.google.dev/gemini-api/docs/text-generation
+
+## OpenAI Realtime Transcription (detalhes tecnicos)
+
+Importante: para transcricao em tempo real, a conexao deve usar o **intent=transcription** e o modelo deve ser enviado no payload de `transcription_session.update`.
+
+- WebSocket: `wss://api.openai.com/v1/realtime?intent=transcription`
+- Evento de configuracao (exemplo):
+
+```json
+{
+  "type": "transcription_session.update",
+  "input_audio_format": "pcm16",
+  "input_audio_transcription": {
+    "model": "gpt-4o-transcribe"
+  },
+  "turn_detection": {
+    "type": "server_vad",
+    "threshold": 0.5,
+    "prefix_padding_ms": 300,
+    "silence_duration_ms": 500
+  }
+}
+```
+
+Se voce conectar usando `?model=gpt-4o-transcribe` (query string), a API pode retornar erro `invalid_model` dizendo que o modelo nao e suportado em realtime mode.
 
 ## Metricas instrumentadas (no app)
 
