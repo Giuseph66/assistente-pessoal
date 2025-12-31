@@ -559,9 +559,9 @@ export class OverlayManager {
     this.settingsWindow = new BrowserWindow({
       width: 900,
       height: 700,
-      frame: true, // Standard window frame
-      transparent: false,
-      backgroundColor: '#1a1a1a',
+      frame: false, // Frameless to avoid duplicate controls
+      transparent: true,
+      backgroundColor: '#00000000',
       webPreferences: {
         preload: join(__dirname, '../preload/index.js'),
         nodeIntegration: false,
@@ -595,9 +595,9 @@ export class OverlayManager {
     this.historyWindow = new BrowserWindow({
       width: 1000,
       height: 800,
-      frame: true,
-      transparent: false,
-      backgroundColor: '#1a1a1a',
+      frame: false, // Frameless
+      transparent: true,
+      backgroundColor: '#00000000',
       webPreferences: {
         preload: join(__dirname, '../preload/index.js'),
         nodeIntegration: false,

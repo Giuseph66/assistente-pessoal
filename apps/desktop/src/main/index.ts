@@ -252,9 +252,14 @@ app.whenReady().then(async () => {
         win?.close();
     });
 
+    ipcMain.on('app:quit', () => {
+        app.quit();
+    });
+
     registerScreenshotIpc();
 
-    overlayManager.createWindow();
+    // Initial view: only HUD
+    overlayManager.createHUDWindow();
 
     // Initialize STT pipeline + IPC
     const modelManager = getModelManager();
