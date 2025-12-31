@@ -16,39 +16,79 @@ export const SessionLayout: React.FC<SessionLayoutProps> = ({
     onPanelChange,
     activeSessionId
 }) => {
-    const [isSessionActive, setIsSessionActive] = useState(true); // Always active for now
-    const [showSessionPanel, setShowSessionPanel] = useState(true);
     const [activeView, setActiveView] = useState<'session' | 'summary'>('session');
 
+    // Ensure we default to session view when a session is active
     useEffect(() => {
         if (activeSessionId) {
-            setIsSessionActive(true);
-            setShowSessionPanel(true);
+            setActiveView('session');
         }
     }, [activeSessionId]);
 
-    // Keyboard shortcuts
-    useEffect(() => {
-        const handleKeyDown = (e: any) => {
-            // Shortcuts now handled by global accelerator or specific windows
-        };
+    const handleMinimize = () => {
+        (window as any).electron.ipcRenderer.send('window:minimize');
+    };
 
-        (globalThis as any).window.addEventListener('keydown', handleKeyDown);
-        return () => (globalThis as any).window.removeEventListener('keydown', handleKeyDown);
-    }, []);
+    const handleClose = () => {
+        (window as any).electron.ipcRenderer.send('window:close');
+    };
 
     return (
         <div className="session-layout">
+            {/* Minimal Window Header */}
+            <header className="window-header">
+                {/* Left: View Switcher */}
+                <div className="header-left">
+                    <div className="view-switcher">
+                        <button
+                            className={`view-tab ${activeView === 'session' ? 'active' : ''}`}
+                            onClick={() => setActiveView('session')}
+                        >
+                            Sessão
+                        </button>
+                        <button
+                            className={`view-tab ${activeView === 'summary' ? 'active' : ''}`}
+                            onClick={() => setActiveView('summary')}
+                        >
+                            Resumo
+                        </button>
+                    </div>
+                </div>
+
+                {/* Center: Session Badge */}
+                <div className="header-center">
+                    {activeSessionId && <span className="session-badge">#{activeSessionId}</span>}
+                </div>
+
+                {/* Right: Window Actions */}
+                <div className="header-right">
+                    <div className="window-actions">
+                        <button className="icon-btn minimize-btn" onClick={handleMinimize} title="Minimizar">
+                            ─
+                        </button>
+                        <button className="icon-btn close-btn" onClick={handleClose} title="Fechar">
+                            ✕
+                        </button>
+                    </div>
+                </div>
+            </header>
+
             {/* Main Content Area */}
-            <main className="session-main" style={{ position: 'relative', height: '100%', overflow: 'hidden' }}>
+            <main className="main-content">
                 {activeView === 'session' ? (
                     <SessionSidebar
-                        isOpen={showSessionPanel}
-                        onClose={() => setShowSessionPanel(false)}
+                        isOpen={true}
+                        onClose={() => { }}
                         sessionId={activeSessionId}
                     />
                 ) : (
-                    activeSessionId ? <SessionSummary sessionId={activeSessionId} /> : null
+                    <div className="summary-container-wrapper">
+                        {activeSessionId ? (
+                            <SessionSummary sessionId={activeSessionId} />
+                        ) : (
+                            <div className="empty-state">Nenhuma sessão ativa</div>
+                        )}
+                    </div>
                 )}
             </main>
         </div>
