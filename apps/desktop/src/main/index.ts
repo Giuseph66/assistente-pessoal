@@ -216,6 +216,15 @@ app.whenReady().then(async () => {
         }
     });
 
+    // IPC handler to open external URLs in default browser
+    ipcMain.on('app:open-url', (_event, url: string) => {
+        if (url && (url.startsWith('http://') || url.startsWith('https://'))) {
+            shell.openExternal(url).catch((err) => {
+                logger.error({ err, url }, 'Failed to open external URL');
+            });
+        }
+    });
+
     // Window Management IPCs
     ipcMain.on('window:open-settings', () => {
         overlayManager.createSettingsWindow();

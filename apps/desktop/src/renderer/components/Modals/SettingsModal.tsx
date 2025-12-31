@@ -1,4 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
+import { AudioVisualizer } from '../Panels/AudioVisualizer';
+import { useSttMicAnalyser } from '../../store/sttMicStore';
 import './SettingsModal.css';
 
 interface SettingsModalProps {
@@ -17,10 +19,189 @@ type SettingsSection =
     | 'premium'
     | 'help';
 
+interface CustomSelectProps {
+    options: string[];
+    value: string;
+    onChange: (value: string) => void;
+    icon?: React.ReactNode;
+}
+
+const CustomSelect: React.FC<CustomSelectProps> = ({ options, value, onChange, icon }) => {
+    const [isOpen, setIsOpen] = useState(false);
+    const selectRef = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        const handleClickOutside = (event: MouseEvent) => {
+            if (selectRef.current && !(selectRef.current as any).contains(event.target)) {
+                setIsOpen(false);
+            }
+        };
+        (globalThis as any).document.addEventListener('mousedown', handleClickOutside);
+        return () => (globalThis as any).document.removeEventListener('mousedown', handleClickOutside);
+    }, []);
+
+    return (
+        <div className="custom-select-container" ref={selectRef}>
+            <div className={`select-wrapper ${isOpen ? 'open' : ''}`} onClick={() => setIsOpen(!isOpen)}>
+                <div className="select-content">
+                    {icon}
+                    <span>{value}</span>
+                </div>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className={`chevron ${isOpen ? 'up' : ''}`}>
+                    <path d="M6 9l6 6 6-6" />
+                </svg>
+            </div>
+            {isOpen && (
+                <div className="custom-select-options">
+                    {options.map((option) => (
+                        <div
+                            key={option}
+                            className={`custom-select-option ${option === value ? 'active' : ''}`}
+                            onClick={() => {
+                                onChange(option);
+                                setIsOpen(false);
+                            }}
+                        >
+                            {option}
+                            {option === value && <span className="check-icon">✓</span>}
+                        </div>
+                    ))}
+                </div>
+            )}
+        </div>
+    );
+};
+
 export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
     const [activeSection, setActiveSection] = useState<SettingsSection>('api');
     const [performance, setPerformance] = useState('personalizado');
     const [audioTab, setAudioTab] = useState<'mic' | 'system'>('mic');
+    const [apiProvider, setApiProvider] = useState<'google' | 'openai' | 'local'>('google');
+    const [toast, setToast] = useState<string | null>(null);
+
+    // Model selection states
+    const [analysisModel, setAnalysisModel] = useState('Gemini 3 Pro');
+    const [liveModel, setLiveModel] = useState('Gemini 2.0 Flash (Live)');
+
+    // API Key states
+    const [geminiKey, setGeminiKey] = useState('');
+    const [openaiKey, setOpenaiKey] = useState('');
+    const [isKeyLoaded, setIsKeyLoaded] = useState(false);
+    const [savedProvider, setSavedProvider] = useState<string | null>(null);
+
+    // Audio states
+    const [selectedMic, setSelectedMic] = useState('Microfone Padrão');
+    const [selectedSystemAudio, setSelectedSystemAudio] = useState('Áudio do Sistema (Nativo)');
+    const sttMicAnalyser = useSttMicAnalyser();
+    const [localAnalyser, setLocalAnalyser] = useState<AnalyserNode | null>(null);
+    const localStreamRef = useRef<MediaStream | null>(null);
+    const localContextRef = useRef<AudioContext | null>(null);
+
+    // Fetch keys and config on mount
+    useEffect(() => {
+        const fetchData = async () => {
+            try {
+                // Fetch keys
+                const keys = await (globalThis as any).ai.listKeys();
+                if (keys && Array.isArray(keys)) {
+                    const gKey = keys.find((k: any) => k.providerId === 'gemini');
+                    const oKey = keys.find((k: any) => k.providerId === 'openai');
+
+                    if (gKey) setGeminiKey(`•••• •••• •••• ${gKey.last4}`);
+                    if (oKey) setOpenaiKey(`•••• •••• •••• ${oKey.last4}`);
+                }
+
+                // Fetch active config
+                const config = await (globalThis as any).ai.getConfig();
+                if (config && config.providerId) {
+                    setSavedProvider(config.providerId);
+                    // Sincroniza a aba atual com o provedor salvo no primeiro carregamento
+                    setApiProvider(config.providerId === 'gemini' ? 'google' : config.providerId === 'openai' ? 'openai' : 'local');
+                }
+
+                setIsKeyLoaded(true);
+            } catch (error) {
+                console.error('Failed to fetch settings data:', error);
+            }
+        };
+        fetchData();
+    }, []);
+
+    const handleSaveKey = async () => {
+        const currentKey = apiProvider === 'google' ? geminiKey : openaiKey;
+        const providerId = apiProvider === 'google' ? 'gemini' : 'openai';
+
+        try {
+            // Se a chave não começar com os pontos, salva a nova chave
+            if (!currentKey.startsWith('••••')) {
+                if (!currentKey.trim()) {
+                    showToast('Por favor, insira uma chave de API válida.');
+                    return;
+                }
+                await (globalThis as any).ai.addKey(providerId, currentKey, `Key ${apiProvider.toUpperCase()}`);
+
+                // Atualiza o estado com a versão mascarada após salvar
+                const last4 = currentKey.slice(-4);
+                if (apiProvider === 'google') setGeminiKey(`•••• •••• •••• ${last4}`);
+                else setOpenaiKey(`•••• •••• •••• ${last4}`);
+            }
+
+            // Salva a configuração como ativa
+            await (globalThis as any).ai.saveConfig({ providerId });
+            setSavedProvider(providerId);
+            showToast(`Configurações de ${apiProvider.toUpperCase()} aplicadas e ativadas!`);
+        } catch (error) {
+            showToast('Erro ao salvar as configurações.');
+            console.error(error);
+        }
+    };
+
+    useEffect(() => {
+        if (apiProvider === 'google') {
+            setAnalysisModel('Gemini 3 Pro');
+            setLiveModel('Gemini 2.0 Flash (Live)');
+        } else if (apiProvider === 'openai') {
+            setAnalysisModel('GPT-5.2 Standard');
+            setLiveModel('GPT-4o Realtime');
+        }
+    }, [apiProvider]);
+
+    useEffect(() => {
+        if (isOpen && activeSection === 'audio') {
+            const startLocalMic = async () => {
+                try {
+                    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                    const context = new AudioContext();
+                    const source = context.createMediaStreamSource(stream);
+                    const analyser = context.createAnalyser();
+                    analyser.fftSize = 256;
+                    source.connect(analyser);
+
+                    localStreamRef.current = stream;
+                    localContextRef.current = context;
+                    setLocalAnalyser(analyser);
+                } catch (err) {
+                    console.error('Error capturing local mic:', err);
+                }
+            };
+            startLocalMic();
+        } else {
+            if (localStreamRef.current) {
+                localStreamRef.current.getTracks().forEach(t => t.stop());
+                localStreamRef.current = null;
+            }
+            if (localContextRef.current) {
+                localContextRef.current.close();
+                localContextRef.current = null;
+            }
+            setLocalAnalyser(null);
+        }
+    }, [isOpen, activeSection]);
+
+    const showToast = (message: string) => {
+        setToast(message);
+        setTimeout(() => setToast(null), 3000);
+    };
 
     if (!isOpen) return null;
 
@@ -31,133 +212,215 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
                     <div className="settings-content-inner">
                         <div className="content-header">
                             <div className="provider-tabs">
-                                <button className="provider-tab">OpenAI</button>
-                                <button className="provider-tab active">Google <span className="check-icon">✓</span></button>
-                                <button className="provider-tab">OpenRouter</button>
-                                <button className="provider-tab locked">Custom API <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" /></svg></button>
+                                <button
+                                    className={`provider-tab ${apiProvider === 'google' ? 'active' : ''}`}
+                                    onClick={() => setApiProvider('google')}
+                                >
+                                    Google Gemini {savedProvider === 'gemini' && <span className="check-icon">✓</span>}
+                                </button>
+                                <button
+                                    className={`provider-tab ${apiProvider === 'openai' ? 'active' : ''}`}
+                                    onClick={() => setApiProvider('openai')}
+                                >
+                                    OpenAI {savedProvider === 'openai' && <span className="check-icon">✓</span>}
+                                </button>
+                                <button
+                                    className={`provider-tab ${apiProvider === 'local' ? 'active' : ''}`}
+                                    onClick={() => setApiProvider('local')}
+                                >
+                                    Local LLM (Ollama) {savedProvider === 'local' && <span className="check-icon">✓</span>}
+                                </button>
                             </div>
                         </div>
 
                         <div className="settings-body">
-                            <div className="performance-grid">
-                                <button className={`perf-card ${performance === 'rapido' ? 'active' : ''}`} onClick={() => setPerformance('rapido')}>
-                                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" /></svg>
-                                    <div className="perf-info">
-                                        <span className="perf-title">Rápido</span>
-                                        <span className="perf-desc">Respostas rápidas, respostas curtas</span>
+                            {apiProvider === 'local' ? (
+                                <div className="local-llm-placeholder">
+                                    <div className="placeholder-icon">
+                                        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M20 16V8a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2z" /><path d="M9 13v2" /><path d="M15 13v2" /><path d="M12 9v2" /></svg>
                                     </div>
-                                </button>
-                                <button className={`perf-card ${performance === 'padrao' ? 'active' : ''}`} onClick={() => setPerformance('padrao')}>
-                                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10" /><circle cx="12" cy="12" r="3" /></svg>
-                                    <div className="perf-info">
-                                        <span className="perf-title">Padrão</span>
-                                        <span className="perf-desc">Boa combinação de velocidade e qualidade</span>
-                                    </div>
-                                </button>
-                                <button className={`perf-card ${performance === 'qualidade' ? 'active' : ''}`} onClick={() => setPerformance('qualidade')}>
-                                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" /></svg>
-                                    <div className="perf-info">
-                                        <span className="perf-title">Qualidade</span>
-                                        <span className="perf-desc">Respostas completas, respostas detalhadas</span>
-                                    </div>
-                                </button>
-                                <button className={`perf-card ${performance === 'personalizado' ? 'active' : ''}`} onClick={() => setPerformance('personalizado')}>
-                                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M20 7h-9m3 3H5m16 6h-9m3 3H5" /></svg>
-                                    <div className="perf-info">
-                                        <span className="perf-title">Personalizado</span>
-                                        <span className="perf-desc">Escolha seus próprios modelos</span>
-                                    </div>
-                                    {performance === 'personalizado' && <div className="card-check">✓</div>}
-                                </button>
-                            </div>
-
-                            <div className="info-box blue">
-                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10" /><line x1="12" y1="16" x2="12" y2="12" /><line x1="12" y1="8" x2="12.01" y2="8" /></svg>
-                                <span>As seleções de modelo são otimizadas automaticamente com base na sua escolha de desempenho.</span>
-                            </div>
-
-                            <div className="input-group">
-                                <label>Modelo de Análise</label>
-                                <div className="select-wrapper">
-                                    <div className="select-content">
-                                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" /></svg>
-                                        <span>Gemini 2.5 Flash-Lite</span>
-                                    </div>
-                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M6 9l6 6 6-6" /></svg>
+                                    <h3>Integração Local em Breve</h3>
+                                    <p>Estamos trabalhando para suportar Ollama, LM Studio e outras LLMs rodando localmente na sua máquina.</p>
+                                    <button className="btn-future" onClick={() => showToast('Esta funcionalidade será implementada em breve!')}>
+                                        Me avise quando estiver pronto
+                                    </button>
                                 </div>
-                                <span className="input-help">Modelo usado para analisar imagens e conversas</span>
-                            </div>
-
-                            <div className="input-group">
-                                <label>Modelo de Transcrição Gemini Live</label>
-                                <div className="select-wrapper">
-                                    <div className="select-content">
-                                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" /><path d="M19 10v2a7 7 0 0 1-14 0v-2" /></svg>
-                                        <span>Gemini Live 2.5 Flash Preview</span>
+                            ) : (
+                                <div className="api-selection-content">
+                                    <div className="api-selection-header">
+                                        <div className="api-key-group">
+                                            <label>Chave de API {apiProvider === 'google' ? 'Google Gemini' : 'OpenAI'}</label>
+                                            <div className="api-key-input-wrapper">
+                                                <input
+                                                    type="password"
+                                                    placeholder={`Cole sua chave da ${apiProvider === 'google' ? 'Google' : 'OpenAI'} aqui...`}
+                                                    className="api-key-input"
+                                                    value={apiProvider === 'google' ? geminiKey : openaiKey}
+                                                    onChange={(e) => {
+                                                        const val = (e.target as any).value;
+                                                        if (apiProvider === 'google') setGeminiKey(val);
+                                                        else setOpenaiKey(val);
+                                                    }}
+                                                />
+                                                <button
+                                                    onClick={() => {
+                                                        const url = apiProvider === 'google'
+                                                            ? 'https://aistudio.google.com/api-keys'
+                                                            : 'https://platform.openai.com/api-keys';
+                                                        (globalThis as any).electron.ipcRenderer.send('app:open-url', url);
+                                                    }}
+                                                    className="get-key-link"
+                                                    style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
+                                                >
+                                                    Obter Chave
+                                                </button>
+                                            </div>
+                                        </div>
+                                        <button className="btn-use-model" onClick={handleSaveKey}>
+                                            Usar este modelo
+                                        </button>
                                     </div>
-                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M6 9l6 6 6-6" /></svg>
+
+                                    <div className="performance-section-title">Configurações de Desempenho</div>
+                                    <div className="performance-grid">
+                                        <button className={`perf-card ${performance === 'rapido' ? 'active' : ''}`} onClick={() => setPerformance('rapido')}>
+                                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" /></svg>
+                                            <div className="perf-info">
+                                                <span className="perf-title">Rápido</span>
+                                                <span className="perf-desc">Respostas rápidas, respostas curtas</span>
+                                            </div>
+                                        </button>
+                                        <button className={`perf-card ${performance === 'padrao' ? 'active' : ''}`} onClick={() => setPerformance('padrao')}>
+                                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10" /><circle cx="12" cy="12" r="3" /></svg>
+                                            <div className="perf-info">
+                                                <span className="perf-title">Padrão</span>
+                                                <span className="perf-desc">Equilíbrio entre velocidade e qualidade</span>
+                                            </div>
+                                        </button>
+                                        <button className={`perf-card ${performance === 'qualidade' ? 'active' : ''}`} onClick={() => setPerformance('qualidade')}>
+                                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" /></svg>
+                                            <div className="perf-info">
+                                                <span className="perf-title">Qualidade</span>
+                                                <span className="perf-desc">Respostas completas e detalhadas</span>
+                                            </div>
+                                        </button>
+                                        <button className={`perf-card ${performance === 'personalizado' ? 'active' : ''}`} onClick={() => setPerformance('personalizado')}>
+                                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M20 7h-9m3 3H5m16 6h-9m3 3H5" /></svg>
+                                            <div className="perf-info">
+                                                <span className="perf-title">Personalizado</span>
+                                                <span className="perf-desc">Escolha seus próprios modelos</span>
+                                            </div>
+                                        </button>
+                                    </div>
+
+                                    <div className="input-group">
+                                        <label>Modelo de Análise</label>
+                                        <CustomSelect
+                                            value={analysisModel}
+                                            onChange={(val) => {
+                                                setAnalysisModel(val);
+                                                showToast(`Modelo de análise alterado para ${val}`);
+                                            }}
+                                            icon={<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" /></svg>}
+                                            options={apiProvider === 'google'
+                                                ? ['Gemini 3 Pro', 'Gemini 3 Flash', 'Gemini 2.5 Pro', 'Gemini 2.5 Flash', 'Gemini 2.5 Flash-Lite']
+                                                : ['GPT-5.2 Standard', 'GPT-5.2 Mini', 'GPT-4.1 Standard', 'GPT-4o', 'o1']
+                                            }
+                                        />
+                                        <span className="input-help">Modelo usado para analisar imagens e conversas</span>
+                                    </div>
+
+                                    <div className="input-group">
+                                        <label>Modelo de Transcrição Live</label>
+                                        <CustomSelect
+                                            value={liveModel}
+                                            onChange={(val) => {
+                                                setLiveModel(val);
+                                                showToast(`Modelo de transcrição alterado para ${val}`);
+                                            }}
+                                            icon={<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" /><path d="M19 10v2a7 7 0 0 1-14 0v-2" /></svg>}
+                                            options={apiProvider === 'google'
+                                                ? ['Gemini 2.0 Flash (Live)', 'Gemini 1.5 Flash']
+                                                : ['GPT-4o Realtime', 'GPT-4o Mini Realtime', 'Whisper v3']
+                                            }
+                                        />
+                                        <span className="input-help">Selecione o modelo usado para transcrição de voz em tempo real</span>
+                                    </div>
                                 </div>
-                                <span className="input-help">Selecione o modelo usado para transcrição de voz Gemini Live</span>
-                                <button className="link-btn">Ver detalhes do modelo</button>
-                            </div>
+                            )}
                         </div>
                     </div>
                 );
             case 'audio':
                 return (
                     <div className="settings-content-inner">
-                        <div className="content-header">
-                            <div className="sub-tabs">
-                                <button className={`sub-tab ${audioTab === 'mic' ? 'active' : ''}`} onClick={() => setAudioTab('mic')}>
-                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" /><path d="M19 10v2a7 7 0 0 1-14 0v-2" /></svg>
-                                    Seu Áudio
-                                </button>
-                                <button className={`sub-tab ${audioTab === 'system' ? 'active' : ''}`} onClick={() => setAudioTab('system')}>
-                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 18v-6a9 9 0 0 1 18 0v6" /><path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3zM3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z" /></svg>
-                                    Áudio Recebido
-                                </button>
+                        <div className="audio-settings-grid">
+                            <div className="audio-column">
+                                <div className="audio-column-header">
+                                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" /><path d="M19 10v2a7 7 0 0 1-14 0v-2" /></svg>
+                                    <h3>Seu Microfone</h3>
+                                </div>
+                                <div className="input-group">
+                                    <label>Dispositivo de Entrada</label>
+                                    <CustomSelect
+                                        value={selectedMic}
+                                        onChange={(val) => {
+                                            setSelectedMic(val);
+                                            showToast(`Microfone alterado para ${val}`);
+                                        }}
+                                        options={['Microfone Padrão', 'Microfone Interno', 'Headset Externo']}
+                                    />
+                                </div>
+                                <div className="visualizer-container-settings">
+                                    <AudioVisualizer analyser={localAnalyser || sttMicAnalyser} width={220} height={60} />
+                                    <span className="visualizer-label">Monitorando entrada...</span>
+                                </div>
                             </div>
-                        </div>
 
-                        <div className="settings-body">
-                            {audioTab === 'mic' ? (
-                                <>
-                                    <div className="input-group">
-                                        <label>Seu Microfone</label>
-                                        <div className="select-wrapper">
-                                            <div className="select-content">
-                                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" /><path d="M19 10v2a7 7 0 0 1-14 0v-2" /></svg>
-                                                <span>Microfone Padrão</span>
-                                            </div>
-                                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M6 9l6 6 6-6" /></svg>
-                                        </div>
-                                        <div className="volume-meter">
-                                            <div className="volume-bar" style={{ width: '40%' }}></div>
-                                        </div>
-                                        <span className="input-help">Selecione seu microfone para capturar o que você diz durante reuniões</span>
-                                        <span className="device-count">3 dispositivos disponíveis</span>
-                                    </div>
-                                </>
-                            ) : (
-                                <>
-                                    <div className="input-group">
-                                        <label>Fonte de Áudio Recebido</label>
-                                        <div className="select-wrapper">
-                                            <div className="select-content">
-                                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="2" y="3" width="20" height="14" rx="2" ry="2" /><line x1="8" y1="21" x2="16" y2="21" /><line x1="12" y1="17" x2="12" y2="21" /></svg>
-                                                <span>Áudio do Sistema (Nativo)</span>
-                                            </div>
-                                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M6 9l6 6 6-6" /></svg>
-                                        </div>
-                                        <div className="info-box green">
-                                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="20 6 9 17 4 12" /></svg>
-                                            <span>Capturando áudio do sistema - selecione uma tela no popup</span>
-                                        </div>
-                                        <span className="input-help">Captura áudio diretamente do seu sistema sem drivers de áudio virtuais. Você será solicitado a selecionar uma tela.</span>
-                                        <span className="device-count">3 dispositivos disponíveis</span>
-                                    </div>
-                                </>
-                            )}
+                            <div className="audio-column">
+                                <div className="audio-column-header">
+                                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 18v-6a9 9 0 0 1 18 0v6" /><path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3zM3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z" /></svg>
+                                    <h3>Áudio do Sistema</h3>
+                                </div>
+                                <div className="input-group">
+                                    <label>Fonte de Captura</label>
+                                    <CustomSelect
+                                        value={selectedSystemAudio}
+                                        onChange={(val) => {
+                                            setSelectedSystemAudio(val);
+                                            showToast(`Fonte de áudio alterada para ${val}`);
+                                        }}
+                                        options={['Áudio do Sistema (Nativo)', 'Monitor de Saída']}
+                                    />
+                                </div>
+                                <div className="visualizer-container-settings">
+                                    <AudioVisualizer analyser={null} level={0.2} width={220} height={60} />
+                                    <span className="visualizer-label">Monitorando saída...</span>
+                                </div>
+                            </div>
+
+                            <div className="audio-column">
+                                <div className="audio-column-header">
+                                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2" /><circle cx="12" cy="12" r="3" /><path d="M12 18v-2" /><path d="M12 8V6" /><path d="M18 12h-2" /><path d="M8 12H6" /></svg>
+                                    <h3>Captura de Tela</h3>
+                                </div>
+                                <div className="input-group">
+                                    <label>Qualidade da Captura</label>
+                                    <CustomSelect
+                                        value="Alta (1080p)"
+                                        onChange={(val) => showToast(`Qualidade alterada para ${val}`)}
+                                        options={['Baixa (480p)', 'Média (720p)', 'Alta (1080p)', 'Nativa (4K)']}
+                                    />
+                                </div>
+                                <div className="input-group">
+                                    <label>Frequência de Captura</label>
+                                    <CustomSelect
+                                        value="1 FPS"
+                                        onChange={(val) => showToast(`Frequência alterada para ${val}`)}
+                                        options={['0.5 FPS', '1 FPS', '2 FPS', '5 FPS']}
+                                    />
+                                </div>
+                            </div>
                         </div>
                     </div>
                 );
@@ -187,7 +450,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
                             <div className="permission-card-premium">
                                 <div className="permission-card-header">
                                     <div className="permission-icon-box">
-                                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2" /><circle cx="12" cy="12" r="3" /><path d="M12 18v-2" /><path d="M12 8V6" /><path d="M18 12h-2" /><path d="M8 12H6" /></svg>
+                                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" /></svg>
                                     </div>
                                     <div className="permission-status-badge active">
                                         <span className="pulse"></span>
@@ -195,11 +458,11 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
                                     </div>
                                 </div>
                                 <div className="permission-card-body">
-                                    <h3>Captura de Tela</h3>
-                                    <p>Necessário para que o assistente entenda o contexto visual do que você está fazendo.</p>
+                                    <h3>Privacidade e Dados</h3>
+                                    <p>Seus dados são processados localmente e criptografados antes de serem enviados para a nuvem.</p>
                                 </div>
                                 <div className="permission-card-footer">
-                                    <button className="btn-manage-permission">Gerenciar</button>
+                                    <button className="btn-manage-permission">Configurar</button>
                                 </div>
                             </div>
                         </div>
@@ -266,6 +529,85 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
                                         </button>
                                     </div>
                                 </div>
+                            </div>
+                        </div>
+                    </div>
+                );
+            case 'features':
+                return (
+                    <div className="settings-content-inner">
+                        <div className="content-header">
+                            <h3>Recursos e Desempenho</h3>
+                            <p className="header-desc">Ajuste o equilíbrio entre velocidade e qualidade para o seu assistente.</p>
+                        </div>
+                        <div className="settings-body">
+                            <div className="input-group">
+                                <label>Perfil de Desempenho</label>
+                                <CustomSelect
+                                    value={performance}
+                                    onChange={(val) => {
+                                        setPerformance(val);
+                                        showToast(`Perfil de desempenho alterado para ${val}`);
+                                    }}
+                                    icon={<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" /></svg>}
+                                    options={['personalizado', 'qualidade', 'padrao', 'rapido']}
+                                />
+                                <span className="input-help">Escolha como o assistente deve priorizar o processamento</span>
+                            </div>
+
+                            <div className="feature-toggle-list">
+                                <div className="feature-toggle-item">
+                                    <div className="toggle-info">
+                                        <h4>Análise de Contexto Contínua</h4>
+                                        <p>Permite que o assistente analise o que você está fazendo sem precisar ser chamado.</p>
+                                    </div>
+                                    <div className="toggle-switch active"></div>
+                                </div>
+                                <div className="feature-toggle-item">
+                                    <div className="toggle-info">
+                                        <h4>Sugestões Proativas</h4>
+                                        <p>O assistente sugerirá ações baseadas no seu fluxo de trabalho atual.</p>
+                                    </div>
+                                    <div className="toggle-switch"></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                );
+            case 'privacy':
+                return (
+                    <div className="settings-content-inner">
+                        <div className="content-header">
+                            <h3>Privacidade e Segurança</h3>
+                            <p className="header-desc">Gerencie como seus dados são tratados e armazenados localmente.</p>
+                        </div>
+                        <div className="settings-body">
+                            <div className="feature-toggle-list">
+                                <div className="feature-toggle-item">
+                                    <div className="toggle-info">
+                                        <h4>Histórico Local Criptografado</h4>
+                                        <p>Todas as suas sessões são salvas apenas na sua máquina com criptografia de ponta.</p>
+                                    </div>
+                                    <div className="toggle-switch active"></div>
+                                </div>
+                                <div className="feature-toggle-item">
+                                    <div className="toggle-info">
+                                        <h4>Modo Furtivo Automático</h4>
+                                        <p>Oculta o aplicativo automaticamente quando não estiver em uso.</p>
+                                    </div>
+                                    <div className="toggle-switch active"></div>
+                                </div>
+                                <div className="feature-toggle-item">
+                                    <div className="toggle-info">
+                                        <h4>Anonimizar Dados de Telemetria</h4>
+                                        <p>Remove informações identificáveis antes de enviar logs de erro.</p>
+                                    </div>
+                                    <div className="toggle-switch"></div>
+                                </div>
+                            </div>
+                            <div className="danger-zone-settings">
+                                <h4>Zona de Perigo</h4>
+                                <button className="btn-danger-outline">Limpar Todo o Histórico</button>
                             </div>
                         </div>
                     </div>
@@ -391,79 +733,85 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
     };
 
     return (
-        <div className="modal-overlay" onClick={onClose}>
-            <div className="modal-window" onClick={e => e.stopPropagation()}>
-                {/* Header */}
-                <div className="modal-header">
-                    <span className="header-title">Configurações</span>
-                    <button className="close-btn-red" onClick={onClose}>
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
-                            <line x1="18" y1="6" x2="6" y2="18" />
-                            <line x1="6" y1="6" x2="18" y2="18" />
-                        </svg>
-                    </button>
+        <div className="modal-window" onClick={e => e.stopPropagation()}>
+            {/* Toast Notification */}
+            {toast && (
+                <div className="settings-toast">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" /><polyline points="22 4 12 14.01 9 11.01" /></svg>
+                    <span>{toast}</span>
                 </div>
+            )}
 
-                <div className="modal-main">
-                    {/* Sidebar */}
-                    <div className="modal-sidebar">
-                        <nav className="sidebar-nav">
-                            <button className={`sidebar-item ${activeSection === 'api' ? 'active' : ''}`} onClick={() => setActiveSection('api')}>
-                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" /></svg>
-                                API e Modelos
-                            </button>
-                            <button className={`sidebar-item ${activeSection === 'audio' ? 'active' : ''}`} onClick={() => setActiveSection('audio')}>
-                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" /><path d="M19 10v2a7 7 0 0 1-14 0v-2" /><line x1="12" y1="19" x2="12" y2="23" /><line x1="8" y1="23" x2="16" y2="23" /></svg>
-                                Áudio e Tela
-                            </button>
-                            <button className={`sidebar-item ${activeSection === 'permissions' ? 'active' : ''}`} onClick={() => setActiveSection('permissions')}>
-                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" /></svg>
-                                Permissões
-                            </button>
-                            <button className={`sidebar-item ${activeSection === 'features' ? 'active' : ''}`} onClick={() => setActiveSection('features')}>
-                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="4" y1="21" x2="4" y2="14" /><line x1="4" y1="10" x2="4" y2="3" /><line x1="12" y1="21" x2="12" y2="12" /><line x1="12" y1="8" x2="12" y2="3" /><line x1="20" y1="21" x2="20" y2="16" /><line x1="20" y1="12" x2="20" y2="3" /><line x1="2" y1="14" x2="6" y2="14" /><line x1="10" y1="8" x2="14" y2="8" /><line x1="18" y1="16" x2="22" y2="16" /></svg>
-                                Recursos
-                            </button>
-                            <button className={`sidebar-item ${activeSection === 'shortcuts' ? 'active' : ''}`} onClick={() => setActiveSection('shortcuts')}>
-                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="2" y="4" width="20" height="16" rx="2" ry="2" /><line x1="6" y1="8" x2="6" y2="8" /><line x1="10" y1="8" x2="10" y2="8" /><line x1="14" y1="8" x2="14" y2="8" /><line x1="18" y1="8" x2="18" y2="8" /><line x1="6" y1="12" x2="6" y2="12" /><line x1="10" y1="12" x2="10" y2="12" /><line x1="14" y1="12" x2="14" y2="12" /><line x1="18" y1="12" x2="18" y2="12" /><line x1="7" y1="16" x2="17" y2="16" /></svg>
-                                Atalhos
-                            </button>
-                            <button className={`sidebar-item ${activeSection === 'privacy' ? 'active' : ''}`} onClick={() => setActiveSection('privacy')}>
-                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" /></svg>
-                                Privacidade
-                            </button>
-                            <button className={`sidebar-item ${activeSection === 'profile' ? 'active' : ''}`} onClick={() => setActiveSection('profile')}>
-                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" /></svg>
-                                Perfil
-                            </button>{/*
+            {/* Header */}
+            <div className="modal-header">
+                <span className="header-title">Configurações</span>
+                <button className="close-btn-red" onClick={onClose}>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
+                        <line x1="18" y1="6" x2="6" y2="18" />
+                        <line x1="6" y1="6" x2="18" y2="18" />
+                    </svg>
+                </button>
+            </div>
+
+            <div className="modal-main">
+                {/* Sidebar */}
+                <div className="modal-sidebar">
+                    <nav className="sidebar-nav">
+                        <button className={`sidebar-item ${activeSection === 'api' ? 'active' : ''}`} onClick={() => setActiveSection('api')}>
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" /></svg>
+                            API e Modelos
+                        </button>
+                        <button className={`sidebar-item ${activeSection === 'audio' ? 'active' : ''}`} onClick={() => setActiveSection('audio')}>
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" /><path d="M19 10v2a7 7 0 0 1-14 0v-2" /><line x1="12" y1="19" x2="12" y2="23" /><line x1="8" y1="23" x2="16" y2="23" /></svg>
+                            Áudio e Tela
+                        </button>
+                        <button className={`sidebar-item ${activeSection === 'permissions' ? 'active' : ''}`} onClick={() => setActiveSection('permissions')}>
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" /></svg>
+                            Permissões
+                        </button>
+                        <button className={`sidebar-item ${activeSection === 'features' ? 'active' : ''}`} onClick={() => setActiveSection('features')}>
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="4" y1="21" x2="4" y2="14" /><line x1="4" y1="10" x2="4" y2="3" /><line x1="12" y1="21" x2="12" y2="12" /><line x1="12" y1="8" x2="12" y2="3" /><line x1="20" y1="21" x2="20" y2="16" /><line x1="20" y1="12" x2="20" y2="3" /><line x1="2" y1="14" x2="6" y2="14" /><line x1="10" y1="8" x2="14" y2="8" /><line x1="18" y1="16" x2="22" y2="16" /></svg>
+                            Recursos
+                        </button>
+                        <button className={`sidebar-item ${activeSection === 'shortcuts' ? 'active' : ''}`} onClick={() => setActiveSection('shortcuts')}>
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="2" y="4" width="20" height="16" rx="2" ry="2" /><line x1="6" y1="8" x2="6" y2="8" /><line x1="10" y1="8" x2="10" y2="8" /><line x1="14" y1="8" x2="14" y2="8" /><line x1="18" y1="8" x2="18" y2="8" /><line x1="6" y1="12" x2="6" y2="12" /><line x1="10" y1="12" x2="10" y2="12" /><line x1="14" y1="12" x2="14" y2="12" /><line x1="18" y1="12" x2="18" y2="12" /><line x1="7" y1="16" x2="17" y2="16" /></svg>
+                            Atalhos
+                        </button>
+                        <button className={`sidebar-item ${activeSection === 'privacy' ? 'active' : ''}`} onClick={() => setActiveSection('privacy')}>
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" /></svg>
+                            Privacidade
+                        </button>
+                        <button className={`sidebar-item ${activeSection === 'profile' ? 'active' : ''}`} onClick={() => setActiveSection('profile')}>
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" /></svg>
+                            Perfil
+                        </button>{/*
                             <button className={`sidebar-item ${activeSection === 'premium' ? 'active' : ''}`} onClick={() => setActiveSection('premium')}>
                             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" /></svg>
                                 Premium
                             </button>
                                 */}
-                            <button className={`sidebar-item ${activeSection === 'help' ? 'active' : ''}`} onClick={() => setActiveSection('help')}>
-                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10" /><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" /><line x1="12" y1="17" x2="12" y2="17" /></svg>
-                                Ajuda
-                            </button>
-                        </nav>
-                    </div>
-
-                    {/* Content */}
-                    <div className="modal-content">
-                        {renderContent()}
-                    </div>
+                        <button className={`sidebar-item ${activeSection === 'help' ? 'active' : ''}`} onClick={() => setActiveSection('help')}>
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10" /><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" /><line x1="12" y1="17" x2="12" y2="17" /></svg>
+                            Ajuda
+                        </button>
+                    </nav>
                 </div>
 
-                {/* Footer */}
-                <div className="modal-footer">
-                    <button className="power-btn" onClick={() => (globalThis as any).window.electron.ipcRenderer.send('app:quit')}>
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                            <path d="M18.36 6.64a9 9 0 1 1-12.73 0" />
-                            <line x1="12" y1="2" x2="12" y2="12" />
-                        </svg>
-                    </button>
-                    <button className="btn-save" onClick={onClose}>Salvar</button>
+                {/* Content */}
+                <div className="modal-content">
+                    {renderContent()}
                 </div>
+            </div>
+
+            {/* Footer */}
+            <div className="modal-footer">
+                <button className="power-btn" onClick={() => (globalThis as any).window.electron.ipcRenderer.send('app:quit')}>
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <path d="M18.36 6.64a9 9 0 1 1-12.73 0" />
+                        <line x1="12" y1="2" x2="12" y2="12" />
+                    </svg>
+                </button>
+                <button className="btn-save" onClick={onClose}>Salvar</button>
             </div>
         </div>
     );
