@@ -38,12 +38,6 @@ export const SessionSidebar: React.FC<SessionSidebarProps> = ({ isOpen, sessionI
                 >
                     📝 Transcrição
                 </button>
-                <button
-                    className={`nav-pill ${activeTab === 'notes' ? 'active' : ''}`}
-                    onClick={() => setActiveTab('notes')}
-                >
-                    📒 Notas
-                </button>
             </div>
 
             {/* Content Area */}
@@ -56,11 +50,6 @@ export const SessionSidebar: React.FC<SessionSidebarProps> = ({ isOpen, sessionI
                 {activeTab === 'transcription' && (
                     <div className="panel-view">
                         <TranscriptionPanel />
-                    </div>
-                )}
-                {activeTab === 'notes' && (
-                    <div className="panel-view">
-                        <NotesPanel />
                     </div>
                 )}
             </div>

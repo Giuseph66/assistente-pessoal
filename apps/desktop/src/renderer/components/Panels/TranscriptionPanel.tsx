@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import './TranscriptionPanel.css';
 import { AudioVisualizer } from './AudioVisualizer';
 import { CaptionsPanel } from '../CaptionsPanel';
 import { StatusBadge } from '../StatusBadge';

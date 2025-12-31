@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { SessionSidebar } from '../Panels/SessionSidebar';
 import { SessionSummary } from '../Panels/SessionSummary';
+import { NotesPanel } from '../Panels/NotesPanel';
 import './SessionLayout.css';
 
 export interface SessionLayoutProps {
@@ -16,7 +17,7 @@ export const SessionLayout: React.FC<SessionLayoutProps> = ({
     onPanelChange,
     activeSessionId
 }) => {
-    const [activeView, setActiveView] = useState<'session' | 'summary'>('session');
+    const [activeView, setActiveView] = useState<'session' | 'notes' | 'summary'>('session');
 
     // Ensure we default to session view when a session is active
     useEffect(() => {
@@ -47,6 +48,12 @@ export const SessionLayout: React.FC<SessionLayoutProps> = ({
                             Sessão
                         </button>
                         <button
+                            className={`view-tab ${activeView === 'notes' ? 'active' : ''}`}
+                            onClick={() => setActiveView('notes')}
+                        >
+                            Notas
+                        </button>
+                        <button
                             className={`view-tab ${activeView === 'summary' ? 'active' : ''}`}
                             onClick={() => setActiveView('summary')}
                         >
@@ -75,13 +82,19 @@ export const SessionLayout: React.FC<SessionLayoutProps> = ({
 
             {/* Main Content Area */}
             <main className="main-content">
-                {activeView === 'session' ? (
+                {activeView === 'session' && (
                     <SessionSidebar
                         isOpen={true}
                         onClose={() => { }}
                         sessionId={activeSessionId}
                     />
-                ) : (
+                )}
+                {activeView === 'notes' && (
+                    <div className="summary-container-wrapper">
+                        <NotesPanel />
+                    </div>
+                )}
+                {activeView === 'summary' && (
                     <div className="summary-container-wrapper">
                         {activeSessionId ? (
                             <SessionSummary sessionId={activeSessionId} />

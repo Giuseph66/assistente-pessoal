@@ -86,7 +86,7 @@ export class OverlayManager {
   }
 
   private applyTranslationLayout(target: BrowserWindow): void {
-    const reference = this.overlayWindow ? this.overlayWindow.getBounds() : screen.getPrimaryDisplay().bounds;
+    const reference = (this.overlayWindow && !this.overlayWindow.isDestroyed()) ? this.overlayWindow.getBounds() : screen.getPrimaryDisplay().bounds;
     const display = screen.getDisplayMatching(reference);
     target.setResizable(true);
     target.setMaximizable(true);
@@ -167,7 +167,7 @@ export class OverlayManager {
 
     // Salva posição e tamanho quando mudados
     this.overlayWindow.on('moved', () => {
-      if (this.overlayWindow) {
+      if (this.overlayWindow && !this.overlayWindow.isDestroyed()) {
         const [x, y] = this.overlayWindow.getPosition();
         config.set('overlay', 'position', { x, y });
         logger.debug({ x, y }, 'Overlay position saved');
@@ -175,7 +175,7 @@ export class OverlayManager {
     });
 
     this.overlayWindow.on('resized', () => {
-      if (this.overlayWindow) {
+      if (this.overlayWindow && !this.overlayWindow.isDestroyed()) {
         const [width, height] = this.overlayWindow.getSize();
         config.set('overlay', 'size', { width, height });
         logger.debug({ width, height }, 'Overlay size saved');
@@ -184,9 +184,16 @@ export class OverlayManager {
 
     // Permite foco para edicao; so desfoca no modo apresentacao
     this.overlayWindow.on('focus', () => {
-      if (config.getAll().overlay.presentationMode && this.overlayWindow) {
+      if (config.getAll().overlay.presentationMode && this.overlayWindow && !this.overlayWindow.isDestroyed()) {
         this.overlayWindow.blur();
       }
+    });
+
+    // Limpa a referência quando a janela é fechada
+    this.overlayWindow.on('closed', () => {
+      this.overlayWindow = null;
+      this.isVisible = false;
+      logger.debug('Overlay window closed and reference cleared');
     });
 
     logger.info('Overlay window created');
@@ -238,7 +245,7 @@ export class OverlayManager {
    * @param enableContentProtection Se true, também habilita content protection
    */
   show(enableContentProtection: boolean = false): void {
-    if (!this.overlayWindow) {
+    if (!this.overlayWindow || this.overlayWindow.isDestroyed()) {
       this.createWindow();
       return;
     }
@@ -261,7 +268,7 @@ export class OverlayManager {
    * @param disableContentProtection Se true, também desabilita content protection
    */
   hide(disableContentProtection: boolean = false): void {
-    if (this.overlayWindow && this.overlayWindow.isVisible()) {
+    if (this.overlayWindow && !this.overlayWindow.isDestroyed() && this.overlayWindow.isVisible()) {
       this.overlayWindow.hide();
       this.isVisible = false;
 
@@ -289,7 +296,7 @@ export class OverlayManager {
    * Define a opacidade do overlay (0-100)
    */
   setOpacity(opacity: number): void {
-    if (!this.overlayWindow) return;
+    if (!this.overlayWindow || this.overlayWindow.isDestroyed()) return;
 
     const clampedOpacity = Math.max(0, Math.min(100, opacity));
     config.set('overlay', 'opacity', clampedOpacity);
@@ -344,8 +351,8 @@ export class OverlayManager {
    * @param enabled true para ocultar no screen sharing, false para permitir captura
    */
   setContentProtection(enabled: boolean): void {
-    if (!this.overlayWindow) {
-      logger.warn('Cannot set content protection: overlay window not created');
+    if (!this.overlayWindow || this.overlayWindow.isDestroyed()) {
+      logger.warn('Cannot set content protection: overlay window not created or destroyed');
       return;
     }
 
@@ -372,7 +379,7 @@ export class OverlayManager {
    * Move a janela para uma posição específica
    */
   setPosition(x: number, y: number): void {
-    if (this.overlayWindow) {
+    if (this.overlayWindow && !this.overlayWindow.isDestroyed()) {
       const primaryDisplay = screen.getPrimaryDisplay();
       const { width, height } = primaryDisplay.workAreaSize;
 
@@ -389,7 +396,7 @@ export class OverlayManager {
    * Redimensiona a janela
    */
   setSize(width: number, height: number): void {
-    if (this.overlayWindow) {
+    if (this.overlayWindow && !this.overlayWindow.isDestroyed()) {
       this.overlayWindow.setSize(width, height);
       config.set('overlay', 'size', { width, height });
     }
@@ -406,7 +413,7 @@ export class OverlayManager {
    * Verifica se o overlay está visível
    */
   isOverlayVisible(): boolean {
-    return this.isVisible && this.overlayWindow?.isVisible() === true;
+    return this.isVisible && this.overlayWindow && !this.overlayWindow.isDestroyed() && this.overlayWindow.isVisible() === true;
   }
 
   /**
@@ -444,8 +451,8 @@ export class OverlayManager {
    * Preserva a posição relativa dentro do workArea
    */
   moveToNextMonitor(): boolean {
-    if (!this.overlayWindow) {
-      logger.warn('Cannot move to next monitor: overlay window not created');
+    if (!this.overlayWindow || this.overlayWindow.isDestroyed()) {
+      logger.warn('Cannot move to next monitor: overlay window not created or destroyed');
       return false;
     }
 

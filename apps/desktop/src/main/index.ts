@@ -120,7 +120,7 @@ app.whenReady().then(async () => {
     // IPC handlers for overlay
     ipcMain.on('overlay:minimize', () => {
         const window = overlayManager.getWindow();
-        if (window) {
+        if (window && !window.isDestroyed()) {
             if (window.isMinimizable()) {
                 window.minimize();
             } else {
@@ -131,7 +131,7 @@ app.whenReady().then(async () => {
 
     ipcMain.on('overlay:close', () => {
         const window = overlayManager.getWindow();
-        if (window) {
+        if (window && !window.isDestroyed()) {
             window.close();
         }
     });
@@ -246,7 +246,7 @@ app.whenReady().then(async () => {
 
     ipcMain.on('window:open-session', () => {
         const window = overlayManager.getWindow();
-        if (window) {
+        if (window && !window.isDestroyed()) {
             window.show();
             window.focus();
         } else {
