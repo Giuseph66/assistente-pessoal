@@ -18,7 +18,7 @@ export const CommandBar: React.FC<CommandBarProps> = ({ isOpen, onClose, onComma
     }, [isOpen]);
 
     useEffect(() => {
-        const handleKeyDown = (e: KeyboardEvent) => {
+        const handleKeyDown = (e: any) => {
             if (!isOpen) return;
 
             if (e.key === 'Escape') {
@@ -30,16 +30,16 @@ export const CommandBar: React.FC<CommandBarProps> = ({ isOpen, onClose, onComma
             }
         };
 
-        window.addEventListener('keydown', handleKeyDown);
-        return () => window.removeEventListener('keydown', handleKeyDown);
+        (window as any).addEventListener('keydown', handleKeyDown);
+        return () => (window as any).removeEventListener('keydown', handleKeyDown);
     }, [isOpen, inputValue, onClose, onCommand]);
 
     if (!isOpen) return null;
 
     return (
         <div className="command-bar-overlay" onClick={onClose}>
-            <div className="command-bar-container" onClick={(e) => e.stopPropagation()}>
-                <div className="command-input-wrapper">
+            <div className="command-bar-window" onClick={(e) => e.stopPropagation()}>
+                <div className="command-input-pill">
                     <input
                         ref={inputRef}
                         type="text"
@@ -50,18 +50,16 @@ export const CommandBar: React.FC<CommandBarProps> = ({ isOpen, onClose, onComma
                     />
                 </div>
 
-                {/* Suggestions would go here */}
-
-                <div className="command-bar-footer">
-                    <div className="shortcut-chip">
+                <div className="command-bar-shortcuts">
+                    <div className="shortcut-item">
                         <span className="key">Ctrl</span> + <span className="key">E</span>
                         <span className="label">Capturar Tela</span>
                     </div>
-                    <div className="shortcut-chip">
+                    <div className="shortcut-item">
                         <span className="key">Ctrl</span> + <span className="key">Enter</span>
                         <span className="label">Enviar</span>
                     </div>
-                    <div className="shortcut-chip">
+                    <div className="shortcut-item">
                         <span className="key">Esc</span>
                         <span className="label">Cancelar</span>
                     </div>

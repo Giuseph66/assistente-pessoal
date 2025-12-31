@@ -4,67 +4,78 @@
     left: 0;
     right: 0;
     bottom: 0;
-    background-color: rgba(0, 0, 0, 0.6);
-    backdrop-filter: blur(4px);
+    background-color: transparent;
     z-index: 2000;
     display: flex;
-    align-items: flex-start;
+    align-items: center;
     justify-content: center;
-    padding-top: 20vh;
     animation: fadeIn var(--transition-fast) ease-out;
 }
 
-.command-bar-container {
+.command-bar-window {
     width: 600px;
     max-width: 90vw;
-    background-color: var(--bg-surface);
-    border: 1px solid var(--border-subtle);
-    border-radius: var(--radius-lg);
-    box-shadow: var(--shadow-lg);
-    overflow: hidden;
-    animation: slideDown var(--transition-fast) ease-out;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    animation: slideUp var(--transition-fast) ease-out;
 }
 
-.command-input-wrapper {
-    padding: var(--space-md);
-    border-bottom: 1px solid var(--border-subtle);
+.command-input-pill {
+    background-color: #0a0a0a;
+    border: 1px solid #1a1a1a;
+    border-radius: 100px;
+    padding: 16px 24px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
 }
 
 .command-input {
     width: 100%;
-    font-size: 18px;
-    color: var(--text-primary);
-    padding: var(--space-sm);
+    font-size: 16px;
+    color: #ffffff;
+    background: transparent;
+    border: none;
+    outline: none;
 }
 
 .command-input::placeholder {
-    color: var(--text-tertiary);
+    color: #444444;
 }
 
-.command-bar-footer {
-    padding: var(--space-sm) var(--space-md);
-    background-color: var(--bg-surface-hover);
+.command-bar-shortcuts {
     display: flex;
-    gap: var(--space-md);
     align-items: center;
+    justify-content: center;
+    gap: 24px;
+    background-color: #0a0a0a;
+    border: 1px solid #1a1a1a;
+    border-radius: 100px;
+    padding: 8px 24px;
+    width: fit-content;
+    margin: 0 auto;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
 }
 
-.shortcut-chip {
+.shortcut-item {
     display: flex;
     align-items: center;
-    gap: 4px;
+    gap: 6px;
     font-size: 12px;
-    color: var(--text-secondary);
+    color: #444444;
 }
 
-.shortcut-chip .key {
-    background-color: var(--bg-surface);
-    border: 1px solid var(--border-subtle);
+.shortcut-item .key {
+    background-color: #111111;
+    border: 1px solid #222222;
     border-radius: 4px;
     padding: 2px 6px;
     font-family: monospace;
-    font-weight: 500;
-    color: var(--text-primary);
+    font-weight: 600;
+    color: #ffffff;
+}
+
+.shortcut-item .label {
+    color: #666666;
 }
 
 @keyframes fadeIn {

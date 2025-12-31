@@ -2,68 +2,72 @@
     width: 100%;
     height: 100%;
     display: flex;
+    flex-direction: column;
     justify-content: center;
     align-items: center;
     background: transparent;
+    gap: 8px;
+}
+
+.assistant-selector-wrapper {
+    display: flex;
+    justify-content: center;
+    width: 100%;
+    -webkit-app-region: no-drag;
+}
+
+.assistant-selector {
+    background-color: rgba(20, 20, 20, 0.8);
+    backdrop-filter: blur(8px);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-full);
+    padding: 4px 12px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    color: var(--text-secondary);
+    font-size: 12px;
+    font-weight: 500;
+    transition: all var(--transition-fast);
+}
+
+.assistant-selector:hover {
+    background-color: var(--bg-surface-hover);
+    color: var(--text-primary);
+    border-color: var(--border-focus);
 }
 
 .hud-bar {
     display: flex;
     align-items: center;
-    background-color: var(--bg-surface);
-    border: 1px solid var(--border-subtle);
+    background-color: #111111;
+    border: 1px solid #222222;
     border-radius: var(--radius-full);
-    padding: 6px;
-    box-shadow: var(--shadow-lg);
+    padding: 6px 12px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
     gap: var(--space-md);
-    height: 56px;
+    height: 52px;
     transition: all var(--transition-normal);
     -webkit-app-region: drag;
-    /* Allow dragging the bar */
-}
-
-.hud-section,
-.assistant-selector,
-.icon-btn,
-.input-wrapper,
-.hud-cta {
-    -webkit-app-region: no-drag;
-    /* Prevent dragging on interactive elements */
 }
 
 .hud-section {
     display: flex;
     align-items: center;
-    gap: var(--space-sm);
-}
-
-.assistant-selector {
-    padding-left: var(--space-md);
-    cursor: pointer;
-    color: var(--text-secondary);
-    font-weight: 500;
-    font-size: 14px;
-    transition: color var(--transition-fast);
-}
-
-.assistant-selector:hover {
-    color: var(--text-primary);
-}
-
-.hud-divider {
-    width: 1px;
-    height: 24px;
-    background-color: var(--border-subtle);
+    gap: 8px;
+    -webkit-app-region: no-drag;
 }
 
 .icon-btn {
-    width: 36px;
-    height: 36px;
-    border-radius: 50%;
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
     display: flex;
     align-items: center;
     justify-content: center;
-    color: var(--text-secondary);
+    color: var(--text-tertiary);
+    background: transparent;
     transition: all var(--transition-fast);
 }
 
@@ -72,54 +76,78 @@
     color: var(--text-primary);
 }
 
-.input-wrapper {
-    width: 200px;
-    transition: width var(--transition-normal);
+.hud-divider {
+    width: 1px;
+    height: 20px;
+    background-color: #333333;
 }
 
-.input-wrapper:focus-within {
-    width: 300px;
+.input-wrapper {
+    background-color: #1a1a1a;
+    border-radius: 8px;
+    padding: 0 12px;
+    height: 36px;
+    width: 240px;
+    border: 1px solid #222222;
+}
+
+.input-hint {
+    font-size: 10px;
+    font-weight: 600;
+    color: var(--text-tertiary);
+    background-color: #2a2a2a;
+    padding: 2px 4px;
+    border-radius: 4px;
+    font-family: monospace;
 }
 
 .hud-input {
-    width: 100%;
-    padding: 8px 12px;
-    font-size: 14px;
+    background: transparent;
+    border: none;
     color: var(--text-primary);
+    font-size: 13px;
+    width: 100%;
+    padding-left: 8px;
 }
 
 .hud-input::placeholder {
-    color: var(--text-tertiary);
+    color: #555555;
 }
 
 .hud-cta {
     display: flex;
     align-items: center;
-    gap: var(--space-sm);
-    background: linear-gradient(135deg, var(--accent-primary), var(--accent-primary-hover));
+    gap: 8px;
+    background: linear-gradient(90deg, #4f46e5, #7c3aed);
     color: white;
-    padding: 0 20px;
-    height: 44px;
-    border-radius: var(--radius-full);
+    padding: 0 16px;
+    height: 36px;
+    border-radius: 8px;
     font-weight: 600;
-    font-size: 14px;
+    font-size: 13px;
     white-space: nowrap;
-    box-shadow: var(--shadow-glow);
     transition: all var(--transition-normal);
+    border: none;
+    cursor: pointer;
 }
 
 .hud-cta:hover {
+    filter: brightness(1.1);
     transform: translateY(-1px);
-    box-shadow: 0 0 20px var(--accent-glow);
 }
 
-.hud-cta:active {
-    transform: translateY(0);
+.cta-shortcut {
+    font-size: 10px;
+    background-color: rgba(255, 255, 255, 0.2);
+    padding: 1px 4px;
+    border-radius: 3px;
 }
 
-.hud-cta.active {
-    background: var(--bg-surface-hover);
-    border: 1px solid var(--status-error);
+.close-app-btn {
+    color: #444444;
+}
+
+.close-app-btn:hover {
     color: var(--status-error);
-    box-shadow: none;
+    background-color: rgba(239, 68, 68, 0.1);
 }
