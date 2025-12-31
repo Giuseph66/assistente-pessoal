@@ -32,69 +32,73 @@ export const VintageWindow: React.FC<VintageWindowProps> = ({ visible }) => {
   const isActive = isColliding || isDropZoneActive;
 
   return (
-    <div className={`vintage-window-container ${visible ? 'fade-in' : 'fade-out'} ${isDropZoneActive ? 'drop-zone-active' : ''}`}>
-      <svg width="240" height="320" viewBox="0 0 240 320" xmlns="http://www.w3.org/2000/svg">
+    <div className={`vintage-window-container ${visible ? 'fade-in' : 'fade-out'}`}>
+      <svg width="100" height="120" viewBox="0 0 100 120" xmlns="http://www.w3.org/2000/svg">
         <defs>
-          {/* Padrão para as cortinas */}
-          <pattern id="curtainPattern" x="0" y="0" width="20" height="20" patternUnits="userSpaceOnUse">
-            <rect width="20" height="20" fill={isActive ? "#059669" : "#cc3333"} />
-            <circle cx="10" cy="10" r="3" fill={isActive ? "#34d399" : "#6699ff"} />
-            <circle cx="5" cy="5" r="1.5" fill="#ffffff" opacity="0.5" />
-            <circle cx="15" cy="15" r="1.5" fill="#ffffff" opacity="0.5" />
-          </pattern>
+          <linearGradient id="techFrameGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" style={{ stopColor: '#2d1b4d', stopOpacity: 1 }} />
+            <stop offset="50%" style={{ stopColor: '#1a1033', stopOpacity: 1 }} />
+            <stop offset="100%" style={{ stopColor: '#2d1b4d', stopOpacity: 1 }} />
+          </linearGradient>
           
-          {/* Filtro para efeito de madeira desgastada */}
-          <filter id="distress">
-            <feTurbulence type="fractalNoise" baseFrequency="0.1" numOctaves="3" result="noise" />
-            <feDisplacementMap in="SourceGraphic" in2="noise" scale="2" />
+          <linearGradient id="techGlowGradient" x1="0%" y1="0%" x2="0%" y2="100%">
+            <stop offset="0%" style={{ stopColor: '#8b5cf6', stopOpacity: 0.6 }} />
+            <stop offset="50%" style={{ stopColor: '#a78bfa', stopOpacity: 1 }} />
+            <stop offset="100%" style={{ stopColor: '#8b5cf6', stopOpacity: 0.6 }} />
+          </linearGradient>
+
+          <filter id="techNeonGlow" x="-20%" y="-20%" width="140%" height="140%">
+            <feGaussianBlur stdDeviation="1.2" result="blur" />
+            <feComposite in="SourceGraphic" in2="blur" operator="over" />
           </filter>
         </defs>
 
-        {/* Ornamento de Ferro Forjado */}
-        <path 
-          d="M40 20 Q120 -10 200 20 M60 20 Q120 0 180 20 M120 5 L120 20" 
-          stroke={isActive ? "#10b981" : "#8b5cf6"} strokeWidth="3" fill="none" strokeLinecap="round" 
+        {/* Moldura Metálica Principal - Apenas o contorno preenchido */}
+        <path
+          d="M3 12 L12 3 L88 3 L97 12 L97 88 L88 97 L12 97 L3 88 Z M10 10 L10 90 L90 90 L90 10 Z"
+          fill="url(#techFrameGradient)"
+          fillRule="evenodd"
+          stroke="#8b5cf6"
+          strokeWidth="0.5"
         />
-        <circle cx="40" cy="20" r="4" fill={isActive ? "#10b981" : "#8b5cf6"} />
-        <circle cx="200" cy="20" r="4" fill={isActive ? "#10b981" : "#8b5cf6"} />
 
-        {/* Moldura de Madeira (Fundo) */}
-        <rect 
-          x="20" y="30" width="200" height="220" 
-          fill={isActive ? "rgba(16, 185, 129, 0.1)" : "rgba(139, 92, 246, 0.1)"} 
-          stroke={isActive ? "#10b981" : "#8b5cf6"} strokeWidth="4" rx="2" 
+        {/* Painéis da Janela que abrem - Transparentes com contorno apenas */}
+        <g style={{ transition: 'all 0.5s cubic-bezier(0.4, 0, 0.2, 1)', transform: isActive ? 'translateX(-35px)' : 'translateX(0)' }}>
+          <rect x="10" y="10" width="40" height="80" fill="transparent" stroke="#8b5cf6" strokeWidth="1" strokeOpacity="0.3" />
+          <rect x="46" y="10" width="4" height="80" fill="#2d1b4d" />
+          <rect x="10" y="48" width="40" height="4" fill="#2d1b4d" />
+        </g>
+
+        <g style={{ transition: 'all 0.5s cubic-bezier(0.4, 0, 0.2, 1)', transform: isActive ? 'translateX(35px)' : 'translateX(0)' }}>
+          <rect x="50" y="10" width="40" height="80" fill="transparent" stroke="#8b5cf6" strokeWidth="1" strokeOpacity="0.3" />
+          <rect x="50" y="10" width="4" height="80" fill="#2d1b4d" />
+          <rect x="50" y="48" width="40" height="4" fill="#2d1b4d" />
+        </g>
+
+        {/* Detalhes Laterais Brilhantes (Esquerda) */}
+        <rect x="5.5" y="18" width="1.2" height="14" fill="url(#techGlowGradient)" filter="url(#techNeonGlow)" />
+        <circle cx="6.1" cy="32" r="0.8" fill="#8b5cf6" filter="url(#techNeonGlow)" />
+        <rect x="5.5" y="52" width="1.2" height="14" fill="url(#techGlowGradient)" filter="url(#techNeonGlow)" />
+
+        {/* Detalhes Laterais Brilhantes (Direita) */}
+        <rect x="93.3" y="18" width="1.2" height="14" fill="url(#techGlowGradient)" filter="url(#techNeonGlow)" />
+        <circle cx="93.9" cy="32" r="0.8" fill="#8b5cf6" filter="url(#techNeonGlow)" />
+        <rect x="93.3" y="52" width="1.2" height="14" fill="url(#techGlowGradient)" filter="url(#techNeonGlow)" />
+
+        {/* Base / Prateleira Tecnológica */}
+        <path
+          d="M0 97 L100 97 L98.5 115 L1.5 115 Z"
+          fill="#130b26"
+          stroke="#4c1d95"
+          strokeWidth="1"
         />
-        
-        {/* Painéis da Janela */}
-        <rect x="35" y="45" width="80" height="95" fill={isActive ? "#064e3b" : "#1e1b4b"} fillOpacity="0.5" />
-        <rect x="125" y="45" width="80" height="95" fill={isActive ? "#064e3b" : "#1e1b4b"} fillOpacity="0.5" />
-        <rect x="35" y="150" width="80" height="95" fill={isActive ? "#064e3b" : "#1e1b4b"} fillOpacity="0.5" />
-        <rect x="125" y="150" width="80" height="95" fill={isActive ? "#064e3b" : "#1e1b4b"} fillOpacity="0.5" />
+        <rect x="8" y="104" width="84" height="1" fill="#8b5cf6" opacity="0.4" filter="url(#techNeonGlow)" />
 
-        {/* Cortinas */}
-        <path d="M35 45 Q55 90 35 140 L115 140 Q95 90 115 45 Z" fill="url(#curtainPattern)" />
-        <path d="M125 45 Q145 90 125 140 L205 140 Q185 90 205 45 Z" fill="url(#curtainPattern)" />
-        <path d="M35 150 Q55 195 35 245 L115 245 Q95 195 115 150 Z" fill="url(#curtainPattern)" />
-        <path d="M125 150 Q145 195 125 245 L205 245 Q185 195 205 150 Z" fill="url(#curtainPattern)" />
-
-        {/* Moldura Interna (Cruz) */}
-        <line x1="120" y1="30" x2="120" y2="250" stroke={isActive ? "#10b981" : "#8b5cf6"} strokeWidth="6" />
-        <line x1="20" y1="145" x2="220" y2="145" stroke={isActive ? "#10b981" : "#8b5cf6"} strokeWidth="6" />
-        
-        {/* Prateleira */}
-        <rect x="10" y="250" width="220" height="15" fill={isActive ? "#065f46" : "#4c1d95"} rx="2" />
-
-        {/* Ganchos e Canecas */}
-        {[35, 75, 120, 165, 205].map((x, i) => (
-          <g key={i}>
-            <path d={`M${x} 265 Q${x-5} 275 ${x} 280 Q${x+5} 285 ${x} 290`} stroke={isActive ? "#34d399" : "#a78bfa"} strokeWidth="2" fill="none" />
-            <g transform={`translate(${x-10}, 290)`}>
-              <rect x="0" y="0" width="20" height="18" rx="4" fill={isActive ? "#10b981" : "#8b5cf6"} />
-              <path d="M20 5 Q25 5 25 10 Q25 15 20 15" stroke={isActive ? "#10b981" : "#8b5cf6"} strokeWidth="3" fill="none" />
-              <ellipse cx="10" cy="0" rx="10" ry="3" fill={isActive ? "#059669" : "#7c3aed"} />
-            </g>
-          </g>
-        ))}
+        {/* Brilhos nos Cantos */}
+        <circle cx="12" cy="3" r="0.7" fill="#fff" opacity="0.8" />
+        <circle cx="88" cy="3" r="0.7" fill="#fff" opacity="0.8" />
+        <circle cx="12" cy="97" r="0.7" fill="#fff" opacity="0.8" />
+        <circle cx="88" cy="97" r="0.7" fill="#fff" opacity="0.8" />
       </svg>
     </div>
   );

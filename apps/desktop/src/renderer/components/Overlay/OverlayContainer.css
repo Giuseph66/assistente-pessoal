@@ -377,13 +377,15 @@
   letter-spacing: 0.04em;
 }
 
-.status-badge.running {
+.status-badge.running,
+.status-badge.listening {
   background: rgba(90, 200, 120, 0.2);
   color: #9be7b4;
 }
 
 .status-badge.starting,
-.status-badge.stopping {
+.status-badge.stopping,
+.status-badge.finalizing {
   background: rgba(255, 200, 90, 0.2);
   color: #ffe0a6;
 }

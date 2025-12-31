@@ -37,7 +37,7 @@ declare global {
       onLevel: (cb: (event: { level: number; rms: number; ts: number }) => void) => () => void;
       onFinal: (cb: (event: STTFinalEvent) => void) => () => void;
       onStatus: (cb: (event: STTStatus) => void) => () => void;
-      onError: (cb: (event: { message: string; ts: number }) => void) => () => void;
+      onError: (cb: (event: { message: string; debug?: string; providerId?: string; ts: number }) => void) => () => void;
       onDebug: (cb: (event: { message: string; ts: number }) => void) => () => void;
     };
     models: {
@@ -87,7 +87,7 @@ declare global {
       onPartial: (cb: (event: STTPartialEvent) => void) => () => void;
       onFinal: (cb: (event: STTFinalEvent) => void) => () => void;
       onStatus: (cb: (event: STTStatus) => void) => () => void;
-      onError: (cb: (event: { message: string; ts: number }) => void) => () => void;
+      onError: (cb: (event: { message: string; debug?: string; providerId?: string; ts: number }) => void) => () => void;
       onDebug: (cb: (event: { message: string; ts: number }) => void) => () => void;
       onLevel: (cb: (event: { level: number; rms: number; ts: number }) => void) => () => void;
     };

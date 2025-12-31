@@ -349,7 +349,10 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ sessionId }) => {
     if (!window.systemStt) return;
     setSttError(null);
 
-    const isRunning = systemSttStatus.state === 'running' || systemSttStatus.state === 'starting';
+    const isRunning =
+      systemSttStatus.state === 'running' ||
+      systemSttStatus.state === 'listening' ||
+      systemSttStatus.state === 'starting';
     if (isRunning) {
       await window.systemStt.stop();
       setSystemSttPartial(null);
@@ -375,7 +378,10 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ sessionId }) => {
     if (!window.stt) return;
     setSttError(null);
 
-    const isRunning = micSttStatus.state === 'running' || micSttStatus.state === 'starting';
+    const isRunning =
+      micSttStatus.state === 'running' ||
+      micSttStatus.state === 'listening' ||
+      micSttStatus.state === 'starting';
     if (isRunning) {
       await window.stt.stop();
       setMicSttPartial(null);
@@ -391,8 +397,14 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ sessionId }) => {
     }
   };
 
-  const isSystemSttActive = systemSttStatus.state === 'running' || systemSttStatus.state === 'starting';
-  const isMicSttActive = micSttStatus.state === 'running' || micSttStatus.state === 'starting';
+  const isSystemSttActive =
+    systemSttStatus.state === 'running' ||
+    systemSttStatus.state === 'listening' ||
+    systemSttStatus.state === 'starting';
+  const isMicSttActive =
+    micSttStatus.state === 'running' ||
+    micSttStatus.state === 'listening' ||
+    micSttStatus.state === 'starting';
 
   // Get display value for input (show preview if available)
   const getInputDisplayValue = () => {

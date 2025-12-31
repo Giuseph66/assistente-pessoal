@@ -40,6 +40,23 @@ export const ApiSection: React.FC<ApiSectionProps> = ({
     const [isLocalSttActive, setIsLocalSttActive] = React.useState(() => {
         return localStorage.getItem('ricky:use-local-stt') === 'true';
     });
+    const resolveLiveProvider = (label: string): 'openai_realtime_transcribe' | 'gemini_live' | 'vox' | null => {
+        if (
+            label === 'OpenAI Realtime Transcription (gpt-4o-transcribe)' ||
+            label === 'OpenAI Realtime (Transcribe)'
+        ) {
+            return 'openai_realtime_transcribe';
+        }
+        if (
+            label === 'Gemini Live' ||
+            label === 'Gemini Live (Transcription)' ||
+            label === 'Gemini 2.0 Flash (Live)'
+        ) {
+            return 'gemini_live';
+        }
+        if (label === 'Vox (Local)') return 'vox';
+        return null;
+    };
 
     React.useEffect(() => {
         const handleStorageChange = () => {
@@ -222,6 +239,11 @@ export const ApiSection: React.FC<ApiSectionProps> = ({
                                 onChange={(val) => {
                                     setAnalysisModel(val);
                                     showToast(`Modelo de análise alterado para ${val}`);
+                                    const storageKey =
+                                        apiProvider === 'google'
+                                            ? 'ricky:analysis-model:google'
+                                            : 'ricky:analysis-model:openai';
+                                    localStorage.setItem(storageKey, val);
                                 }}
                                 options={apiProvider === 'google'
                                     ? ['Gemini 3 Pro', 'Gemini 3 Flash', 'Gemini 2.5 Pro', 'Gemini 2.5 Flash', 'Gemini 2.5 Flash-Lite']
@@ -246,11 +268,26 @@ export const ApiSection: React.FC<ApiSectionProps> = ({
                                         if (!isLocalSttActive) {
                                     setLiveModel(val);
                                     showToast(`Modelo de transcrição alterado para ${val}`);
+                                    const storageKey =
+                                        apiProvider === 'google'
+                                            ? 'ricky:live-model:google'
+                                            : 'ricky:live-model:openai';
+                                    localStorage.setItem(storageKey, val);
+                                    const providerId = resolveLiveProvider(val);
+                                    const isActiveProvider =
+                                        (savedProvider === 'gemini' && apiProvider === 'google') ||
+                                        (savedProvider === 'openai' && apiProvider === 'openai');
+                                    if (providerId && isActiveProvider && window.stt?.updateConfig) {
+                                        window.stt.updateConfig({ provider: providerId });
+                                        if (providerId !== 'vox') {
+                                            localStorage.setItem('ricky:live-stt-provider', providerId);
+                                        }
+                                    }
                                         }
                                 }}
                                 options={apiProvider === 'google'
-                                    ? ['Gemini 2.0 Flash (Live)', 'Gemini 1.5 Flash']
-                                    : ['GPT-4o Realtime', 'GPT-4o Mini Realtime', 'Whisper v3']
+                                    ? ['Gemini Live', 'Gemini 2.0 Flash (Live)']
+                                    : ['OpenAI Realtime Transcription (gpt-4o-transcribe)']
                                 }
                             />
                                 {isLocalSttActive && (
@@ -267,4 +304,3 @@ export const ApiSection: React.FC<ApiSectionProps> = ({
         </div>
     );
 };
-

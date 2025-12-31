@@ -534,6 +534,14 @@ export class OverlayManager {
   private commandBarWindow: BrowserWindow | null = null;
   private hudDropdownWindow: BrowserWindow | null = null;
   private vintageWindow: BrowserWindow | null = null;
+  private miniHUDWindow: BrowserWindow | null = null;
+  private previouslyVisibleWindows: Set<string> = new Set();
+  private isVintagePortalActive: boolean = false;
+  private vintagePortalTimeout: NodeJS.Timeout | null = null;
+  private vintageCollisionInterval: NodeJS.Timeout | null = null;
+  private lastVintageMouseLogTs: number = 0;
+  private mouseOverPortalStartTime: number = 0;
+  private mouseOverPortalTimeout: NodeJS.Timeout | null = null;
 
   /**
    * Cria a janela HUD (Persistent Bottom Bar)
@@ -608,12 +616,13 @@ export class OverlayManager {
     let isDraggingHUD = false;
     let dragTimeout: NodeJS.Timeout | null = null;
 
+    // OBS(Linux): `will-move` pode não disparar. Mantemos, mas NÃO dependemos dele.
     this.hudWindow.on('will-move', () => {
       if (!isDraggingHUD) {
         isDraggingHUD = true;
-        logger.debug('HUD: drag iniciado (will-move)');
+        logger.info('HUD: drag iniciado (will-move)');
       }
-      
+
       // Limpa timeout anterior se existir
       if (dragTimeout) {
         clearTimeout(dragTimeout);
@@ -622,54 +631,94 @@ export class OverlayManager {
     });
 
     this.hudWindow.on('moved', () => {
-      if (isDraggingHUD && this.hudWindow && !this.hudWindow.isDestroyed()) {
-        const bounds = this.hudWindow.getBounds();
-        const screenWidth = screen.getPrimaryDisplay().workAreaSize.width;
-        
-        // Lógica de posicionamento inteligente
-        const spaceOnRight = screenWidth - (bounds.x + bounds.width);
-        const spaceOnLeft = bounds.x;
-        
-        let vintageX = bounds.x + bounds.width + 20;
-        
-        if (spaceOnRight < 260 && spaceOnLeft > 260) {
-          vintageX = bounds.x - 260;
-        }
-        
-        const vintageY = bounds.y - 100;
-        
-        logger.debug({ vintageX, vintageY, hudBounds: bounds }, 'HUD: movido, atualizando janela vintage');
-        
-        // Mostra ou move a janela vintage
-        if (!this.vintageWindow || this.vintageWindow.isDestroyed()) {
-          this.showVintageWindow(vintageX, vintageY);
-        } else {
-          this.moveVintageWindow(vintageX, vintageY);
-        }
-        
-        // Detecta quando o drag termina (janela para de se mover por 200ms)
-        if (dragTimeout) {
-          clearTimeout(dragTimeout);
-        }
-        dragTimeout = setTimeout(() => {
-          if (isDraggingHUD) {
-            logger.debug('HUD: drag terminado');
-            isDraggingHUD = false;
-            
-            // Verifica se estava sobre a janela vintage para minimizar
-            const wasOverVintage = this.checkHUDOverVintageSync();
-            if (wasOverVintage) {
-              logger.info('HUD: estava sobre janela vintage, minimizando');
-              this.minimizeHUD();
-            }
-            
-            // Esconde a janela vintage após um pequeno delay
-            setTimeout(() => {
-              this.hideVintageWindow();
-            }, 100);
-          }
-        }, 200);
+      if (!this.hudWindow || this.hudWindow.isDestroyed()) return;
+
+      const hudBounds = this.hudWindow.getBounds();
+      logger.info({ x: hudBounds.x, y: hudBounds.y, width: hudBounds.width, height: hudBounds.height }, 'HUD: janela movida');
+
+      // Linux-friendly: se o HUD se moveu, consideramos que o drag começou,
+      // mesmo que `will-move` não tenha disparado.
+      if (!isDraggingHUD) {
+        isDraggingHUD = true;
+        logger.info('HUD: drag iniciado (via moved)');
       }
+
+      // Regra: o portal NÃO pode seguir o HUD, senão nunca haverá "drop".
+      // Durante o drag, apenas atualizamos a detecção de overlap e animação.
+      if (this.isVintagePortalActive) {
+        logger.info('Portal ativo: verificando overlap HUD vs Portal...');
+        this.checkHUDOverVintage(); // envia vintage:drop-zone-active para HUD + portal
+        const mousePos = screen.getCursorScreenPoint();
+        this.updateVintageCollision(mousePos.x, mousePos.y);
+      }
+
+      // Detecta quando o drag termina (parou de mover por 150ms)
+      if (dragTimeout) clearTimeout(dragTimeout);
+      dragTimeout = setTimeout(() => {
+        if (!isDraggingHUD) return;
+        isDraggingHUD = false;
+
+        logger.info('HUD: drag terminou (parou de mover por 150ms). Verificando captura...');
+
+        // Verificação principal: HUD vs Portal
+        const isOver = this.checkHUDOverVintageSync();
+        
+        // Verificação alternativa: se o mouse está sobre o portal E o HUD está próximo do mouse
+        const mousePos = screen.getCursorScreenPoint();
+        const hudBounds = this.hudWindow && !this.hudWindow.isDestroyed() 
+          ? this.hudWindow.getBounds() 
+          : null;
+        const vintageBounds = this.vintageWindow && !this.vintageWindow.isDestroyed() 
+          ? this.vintageWindow.getBounds() 
+          : null;
+        
+        let mouseOverPortal = false;
+        let hudNearMouse = false;
+        
+        if (vintageBounds && hudBounds && this.isVintagePortalActive) {
+          // Mouse sobre portal?
+          mouseOverPortal = (
+            mousePos.x >= vintageBounds.x - 40 &&
+            mousePos.x <= vintageBounds.x + vintageBounds.width + 40 &&
+            mousePos.y >= vintageBounds.y - 40 &&
+            mousePos.y <= vintageBounds.y + vintageBounds.height + 40
+          );
+          
+          // HUD próximo do mouse? (dentro de 100px)
+          const distX = Math.abs(mousePos.x - (hudBounds.x + hudBounds.width / 2));
+          const distY = Math.abs(mousePos.y - (hudBounds.y + hudBounds.height / 2));
+          const distance = Math.sqrt(distX * distX + distY * distY);
+          hudNearMouse = distance < 100;
+          
+          logger.info({
+            mouse: { x: mousePos.x, y: mousePos.y },
+            hud: hudBounds ? { x: hudBounds.x, y: hudBounds.y, centerX: hudBounds.x + hudBounds.width / 2, centerY: hudBounds.y + hudBounds.height / 2 } : null,
+            vintage: vintageBounds,
+            mouseOverPortal,
+            hudNearMouse,
+            distance: distance.toFixed(1)
+          }, 'Verificação alternativa: Mouse + HUD');
+        }
+        
+        logger.info({ 
+          isVintagePortalActive: this.isVintagePortalActive, 
+          isOver, 
+          mouseOverPortal, 
+          hudNearMouse 
+        }, 'Resultado da verificação de captura');
+        
+        // Captura se: (HUD sobre portal) OU (mouse sobre portal E HUD próximo do mouse)
+        const shouldCapture = this.isVintagePortalActive && (isOver || (mouseOverPortal && hudNearMouse));
+        
+        if (shouldCapture) {
+          logger.info('Portal Ativo: HUD capturado! Iniciando Modo Mini...');
+          this.enterMiniMode();
+          return;
+        }
+
+        // Se não capturou, não escondemos aqui: o portal é fechado pelo timeout do clique direito.
+        logger.info({ isVintagePortalActive: this.isVintagePortalActive, isOver }, 'Fim do drag sem captura no portal');
+      }, 150);
     });
 
     this.hudWindow.on('closed', () => { 
@@ -933,8 +982,8 @@ export class OverlayManager {
 
     logger.info('Vintage window: creating new window');
     this.vintageWindow = new BrowserWindow({
-      width: 240,
-      height: 320,
+      width: 200,
+      height: 180,
       frame: false,
       transparent: true,
       alwaysOnTop: true,
@@ -960,8 +1009,17 @@ export class OverlayManager {
 
     this.vintageWindow.setIgnoreMouseEvents(true);
 
+    this.vintageWindow.on('show', () => {
+      this.startCollisionTracking();
+    });
+
+    this.vintageWindow.on('hide', () => {
+      this.stopCollisionTracking();
+    });
+
     this.vintageWindow.on('closed', () => {
       logger.debug('Vintage window: closed');
+      this.stopCollisionTracking();
       this.vintageWindow = null;
     });
 
@@ -973,9 +1031,43 @@ export class OverlayManager {
   }
 
   /**
+   * Inicia o rastreamento de colisão periódico
+   */
+  private startCollisionTracking(): void {
+    if (this.vintageCollisionInterval) return;
+    
+    this.vintageCollisionInterval = setInterval(() => {
+      if (this.vintageWindow && !this.vintageWindow.isDestroyed() && this.vintageWindow.isVisible()) {
+        const mousePos = screen.getCursorScreenPoint();
+        // Logger das coordenadas do mouse enquanto a janela vintage estiver aberta (throttle para não poluir)
+        const now = Date.now();
+        if (now - this.lastVintageMouseLogTs >= 300) {
+          this.lastVintageMouseLogTs = now;
+          logger.info({ x: mousePos.x, y: mousePos.y }, 'Mouse (screen coords) enquanto portal vintage está aberto');
+        }
+        this.updateVintageCollision(mousePos.x, mousePos.y);
+        this.checkHUDOverVintage();
+      } else {
+        this.stopCollisionTracking();
+      }
+    }, 100); // 10fps para detecção de colisão
+  }
+
+  /**
+   * Para o rastreamento de colisão
+   */
+  private stopCollisionTracking(): void {
+    if (this.vintageCollisionInterval) {
+      clearInterval(this.vintageCollisionInterval);
+      this.vintageCollisionInterval = null;
+    }
+    this.lastVintageMouseLogTs = 0;
+  }
+
+  /**
    * Mostra a janela vintage na posição especificada
    */
-  showVintageWindow(x: number, y: number): void {
+  showVintageWindow(x?: number, y?: number): void {
     logger.info({ x, y }, 'Vintage window: show requested');
     if (!this.vintageWindow || this.vintageWindow.isDestroyed()) {
       logger.debug('Vintage window: creating new window');
@@ -983,11 +1075,37 @@ export class OverlayManager {
     }
 
     if (this.vintageWindow) {
-      const finalX = Math.round(x);
-      const finalY = Math.round(y);
+      let finalX: number;
+      let finalY: number;
+
+      // Se não foram fornecidas coordenadas, gera posição aleatória
+      if (x === undefined || y === undefined) {
+        const primaryDisplay = screen.getPrimaryDisplay();
+        const { width: screenWidth, height: screenHeight } = primaryDisplay.workAreaSize;
+        const windowWidth = 200; // largura da VintageWindow
+        const windowHeight = 180; // altura da VintageWindow
+        
+        // Gera posição aleatória garantindo que a janela fique dentro da tela
+        finalX = Math.floor(Math.random() * (screenWidth - windowWidth));
+        finalY = Math.floor(Math.random() * (screenHeight - windowHeight));
+        
+        logger.info({ finalX, finalY, screenWidth, screenHeight }, 'Vintage window: posição aleatória gerada');
+      } else {
+        finalX = Math.round(x);
+        finalY = Math.round(y);
+      }
+
       this.vintageWindow.setPosition(finalX, finalY);
       this.vintageWindow.showInactive(); // show sem roubar foco
       logger.info({ x: finalX, y: finalY }, 'Vintage window: shown at position');
+      
+      // Inicia rastreamento imediatamente para garantir que funcione em todos os sistemas
+      this.startCollisionTracking();
+      
+      // Verificação imediata de colisão ao mostrar
+      const mousePos = screen.getCursorScreenPoint();
+      this.updateVintageCollision(mousePos.x, mousePos.y);
+      this.checkHUDOverVintage();
     } else {
       logger.warn('Vintage window: failed to create/show window');
     }
@@ -1016,6 +1134,13 @@ export class OverlayManager {
     if (this.vintageWindow && !this.vintageWindow.isDestroyed()) {
       this.vintageWindow.hide();
     }
+    
+    // Limpa timer de mouse sobre portal
+    this.mouseOverPortalStartTime = 0;
+    if (this.mouseOverPortalTimeout) {
+      clearTimeout(this.mouseOverPortalTimeout);
+      this.mouseOverPortalTimeout = null;
+    }
   }
 
   /**
@@ -1025,7 +1150,7 @@ export class OverlayManager {
     if (!this.vintageWindow || this.vintageWindow.isDestroyed()) return;
 
     const bounds = this.vintageWindow.getBounds();
-    const margin = 20;
+    const margin = 40; // Aumentado para facilitar a detecção
 
     const isColliding = (
       mouseX >= bounds.x - margin &&
@@ -1034,7 +1159,66 @@ export class OverlayManager {
       mouseY <= bounds.y + bounds.height + margin
     );
 
+    // Logger detalhado comparando mouse vs janela
+    const distX = mouseX < bounds.x ? bounds.x - mouseX : mouseX > (bounds.x + bounds.width) ? mouseX - (bounds.x + bounds.width) : 0;
+    const distY = mouseY < bounds.y ? bounds.y - mouseY : mouseY > (bounds.y + bounds.height) ? mouseY - (bounds.y + bounds.height) : 0;
+    const distance = Math.sqrt(distX * distX + distY * distY);
+
+    // Logger apenas quando há mudança de estado ou quando está colidindo (para debug)
+    if (isColliding) {
+      logger.debug({
+        mouse: { x: mouseX, y: mouseY },
+        window: { 
+          x: bounds.x, 
+          y: bounds.y, 
+          width: bounds.width, 
+          height: bounds.height,
+          right: bounds.x + bounds.width,
+          bottom: bounds.y + bounds.height
+        },
+        collision: {
+          isColliding,
+          margin,
+          distance: distance.toFixed(1),
+          insideX: mouseX >= bounds.x - margin && mouseX <= bounds.x + bounds.width + margin,
+          insideY: mouseY >= bounds.y - margin && mouseY <= bounds.y + bounds.height + margin
+        }
+      }, 'Comparação Mouse vs Janela Vintage');
+    }
+    
     this.vintageWindow.webContents.send('vintage:collision-state', isColliding);
+
+    // Lógica de ativação do Modo Mini baseada no mouse sobre o portal
+    if (this.isVintagePortalActive && isColliding) {
+      // Se o mouse acabou de entrar no portal, inicia o timer
+      if (this.mouseOverPortalStartTime === 0) {
+        this.mouseOverPortalStartTime = Date.now();
+        logger.info('Mouse entrou no portal - iniciando timer de 1s para Modo Mini...');
+        
+        // Limpa timeout anterior se existir
+        if (this.mouseOverPortalTimeout) {
+          clearTimeout(this.mouseOverPortalTimeout);
+        }
+        
+        // Timer de 1 segundo para ativar o Modo Mini
+        this.mouseOverPortalTimeout = setTimeout(() => {
+          if (this.isVintagePortalActive) {
+            logger.info('Mouse sobre portal por 1s - Ativando Modo Mini!');
+            this.enterMiniMode();
+          }
+        }, 1000);
+      }
+    } else {
+      // Mouse saiu do portal - reseta o timer
+      if (this.mouseOverPortalStartTime > 0) {
+        logger.debug('Mouse saiu do portal - cancelando timer');
+        this.mouseOverPortalStartTime = 0;
+        if (this.mouseOverPortalTimeout) {
+          clearTimeout(this.mouseOverPortalTimeout);
+          this.mouseOverPortalTimeout = null;
+        }
+      }
+    }
   }
 
   /**
@@ -1075,25 +1259,278 @@ export class OverlayManager {
 
     const vintageBounds = this.vintageWindow.getBounds();
     const hudBounds = this.hudWindow.getBounds();
+    const margin = 30; // Aumentado para 80px para ser impossível errar o portal
 
-    // Verifica sobreposição entre HUD e janela vintage
+    // Verifica sobreposição entre HUD e janela vintage com margem de erro generosa
     const isOverlapping = !(
-      hudBounds.x + hudBounds.width < vintageBounds.x ||
-      hudBounds.x > vintageBounds.x + vintageBounds.width ||
-      hudBounds.y + hudBounds.height < vintageBounds.y ||
-      hudBounds.y > vintageBounds.y + vintageBounds.height
+      hudBounds.x + hudBounds.width < vintageBounds.x - margin ||
+      hudBounds.x > vintageBounds.x + vintageBounds.width + margin ||
+      hudBounds.y + hudBounds.height < vintageBounds.y - margin ||
+      hudBounds.y > vintageBounds.y + vintageBounds.height + margin
     );
+
+    // Logger detalhado comparando HUD vs Janela Vintage
+    const hudCenterX = hudBounds.x + hudBounds.width / 2;
+    const hudCenterY = hudBounds.y + hudBounds.height / 2;
+    const vintageCenterX = vintageBounds.x + vintageBounds.width / 2;
+    const vintageCenterY = vintageBounds.y + vintageBounds.height / 2;
+    const centerDistance = Math.sqrt(
+      Math.pow(hudCenterX - vintageCenterX, 2) + 
+      Math.pow(hudCenterY - vintageCenterY, 2)
+    );
+
+    logger.info({
+      hud: {
+        x: hudBounds.x,
+        y: hudBounds.y,
+        width: hudBounds.width,
+        height: hudBounds.height,
+        right: hudBounds.x + hudBounds.width,
+        bottom: hudBounds.y + hudBounds.height,
+        center: { x: hudCenterX, y: hudCenterY }
+      },
+      vintage: {
+        x: vintageBounds.x,
+        y: vintageBounds.y,
+        width: vintageBounds.width,
+        height: vintageBounds.height,
+        right: vintageBounds.x + vintageBounds.width,
+        bottom: vintageBounds.y + vintageBounds.height,
+        center: { x: vintageCenterX, y: vintageCenterY }
+      },
+      collision: {
+        isOverlapping,
+        margin,
+        centerDistance: centerDistance.toFixed(1),
+        conditions: {
+          hudRightBeforeVintageLeft: hudBounds.x + hudBounds.width < vintageBounds.x - margin,
+          hudLeftAfterVintageRight: hudBounds.x > vintageBounds.x + vintageBounds.width + margin,
+          hudBottomBeforeVintageTop: hudBounds.y + hudBounds.height < vintageBounds.y - margin,
+          hudTopAfterVintageBottom: hudBounds.y > vintageBounds.y + vintageBounds.height + margin
+        }
+      }
+    }, 'Comparação HUD vs Janela Vintage (Drop Zone)');
 
     return isOverlapping;
   }
 
   /**
-   * Minimiza a janela HUD
+   * Minimiza a janela HUD (com verificação de portal)
    */
   minimizeHUD(): void {
     if (this.hudWindow && !this.hudWindow.isDestroyed()) {
-      this.hudWindow.minimize();
+      const isOver = this.checkHUDOverVintageSync();
+      
+      if (this.isVintagePortalActive && isOver) {
+        logger.info('HUD Minimizado via Portal: Iniciando Modo Mini');
+        this.enterMiniMode();
+      } else {
+        logger.info('HUD Minimizado normalmente');
+        this.hudWindow.minimize();
+      }
     }
+  }
+
+  /**
+   * Ativa o portal da janela vintage por 3 segundos
+   */
+  handleHUDRightClick(): void {
+    logger.info('HUD: clique direito detectado, portal ativado!');
+    
+    // Força reset
+    this.isVintagePortalActive = false;
+    if (this.vintagePortalTimeout) {
+      clearTimeout(this.vintagePortalTimeout);
+    }
+    
+    // Limpa timer de mouse sobre portal
+    this.mouseOverPortalStartTime = 0;
+    if (this.mouseOverPortalTimeout) {
+      clearTimeout(this.mouseOverPortalTimeout);
+      this.mouseOverPortalTimeout = null;
+    }
+
+    const hudBounds = this.hudWindow?.getBounds();
+    if (hudBounds) {
+        // Mostra a janela vintage em posição aleatória (sem passar coordenadas)
+        this.showVintageWindow();
+    }
+    
+    this.isVintagePortalActive = true;
+
+    this.vintagePortalTimeout = setTimeout(() => {
+      if (this.isVintagePortalActive) {
+        this.isVintagePortalActive = false;
+        this.hideVintageWindow();
+        logger.info('Portal fechado: Tempo esgotado.');
+      }
+    }, 5000);
+  }
+
+  /**
+   * Cria a janela Mini-HUD (Bolinha)
+   */
+  createMiniHUDWindow(): void {
+    if (this.miniHUDWindow && !this.miniHUDWindow.isDestroyed()) {
+      return;
+    }
+
+    this.miniHUDWindow = new BrowserWindow({
+      width: 64,
+      height: 64,
+      frame: false,
+      transparent: true,
+      alwaysOnTop: true,
+      skipTaskbar: true,
+      resizable: false,
+      movable: true,
+      hasShadow: false,
+      webPreferences: {
+        preload: join(__dirname, '../preload/index.js'),
+        nodeIntegration: false,
+        contextIsolation: true,
+        sandbox: false,
+      },
+      show: false,
+    });
+
+    if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
+      this.miniHUDWindow.loadURL(`${process.env['ELECTRON_RENDERER_URL']}#mini-hud`);
+    } else {
+      this.miniHUDWindow.loadFile(join(__dirname, '../renderer/index.html'), { hash: 'mini-hud' });
+    }
+
+    this.miniHUDWindow.on('closed', () => {
+      this.miniHUDWindow = null;
+    });
+
+    this.miniHUDWindow.webContents.on('context-menu', (event) => {
+      event.preventDefault();
+      logger.info('MiniHUD: context-menu detectado nativamente');
+      this.exitMiniMode();
+    });
+  }
+
+  /**
+   * Entra no Modo Mini
+   */
+  enterMiniMode(): void {
+    logger.info('Entrando no Modo Mini');
+    
+    // Salva quais janelas do sistema estão visíveis para restaurar depois
+    this.previouslyVisibleWindows.clear();
+    
+    const checkAndClose = (win: BrowserWindow | null, id: string) => {
+      if (win && !win.isDestroyed() && win.isVisible()) {
+        this.previouslyVisibleWindows.add(id);
+        if (id === 'hud') {
+          // HUD apenas esconde, não fecha
+          win.hide();
+        } else {
+          // Outras janelas são fechadas
+          win.close();
+        }
+      }
+    };
+
+    checkAndClose(this.hudWindow, 'hud');
+    checkAndClose(this.overlayWindow, 'overlay');
+    checkAndClose(this.settingsWindow, 'settings');
+    checkAndClose(this.historyWindow, 'history');
+    checkAndClose(this.commandBarWindow, 'command-bar');
+
+    this.hideVintageWindow();
+    this.isVintagePortalActive = false;
+    if (this.vintagePortalTimeout) {
+      clearTimeout(this.vintagePortalTimeout);
+    }
+    
+    // Limpa timer de mouse sobre portal
+    this.mouseOverPortalStartTime = 0;
+    if (this.mouseOverPortalTimeout) {
+      clearTimeout(this.mouseOverPortalTimeout);
+      this.mouseOverPortalTimeout = null;
+    }
+
+    // Mostra a bolinha
+    this.createMiniHUDWindow();
+    if (this.miniHUDWindow) {
+      const primaryDisplay = screen.getPrimaryDisplay();
+      const { width, height } = primaryDisplay.workAreaSize;
+      
+      const margin = height * 0.1;
+      const x = Math.round((width - 64) / 2);
+      const y = Math.round(margin);
+      
+      this.miniHUDWindow.setPosition(x, y);
+      this.miniHUDWindow.show();
+      this.miniHUDWindow.setAlwaysOnTop(true, 'screen-saver');
+    }
+  }
+
+  /**
+   * Sai do Modo Mini e restaura o ambiente
+   */
+  exitMiniMode(): void {
+    logger.info('Saindo do Modo Mini, restaurando ambiente');
+    
+    if (this.miniHUDWindow && !this.miniHUDWindow.isDestroyed()) {
+      this.miniHUDWindow.hide();
+    }
+
+    // Restaura/Recria janelas que estavam abertas antes do Modo Mini
+    if (this.previouslyVisibleWindows.has('hud')) {
+      if (this.hudWindow && !this.hudWindow.isDestroyed()) {
+        this.hudWindow.show();
+      }
+    }
+    
+    if (this.previouslyVisibleWindows.has('overlay')) {
+      if (!this.overlayWindow || this.overlayWindow.isDestroyed()) {
+        this.createWindow();
+      } else {
+        this.overlayWindow.show();
+      }
+    }
+    
+    if (this.previouslyVisibleWindows.has('settings')) {
+      if (!this.settingsWindow || this.settingsWindow.isDestroyed()) {
+        this.createSettingsWindow();
+      } else {
+        this.settingsWindow.show();
+      }
+    }
+    
+    if (this.previouslyVisibleWindows.has('history')) {
+      if (!this.historyWindow || this.historyWindow.isDestroyed()) {
+        this.createHistoryWindow();
+      } else {
+        this.historyWindow.show();
+      }
+    }
+    
+    if (this.previouslyVisibleWindows.has('command-bar')) {
+      if (!this.commandBarWindow || this.commandBarWindow.isDestroyed()) {
+        this.createCommandBarWindow();
+      } else {
+        this.commandBarWindow.show();
+      }
+    }
+
+    this.previouslyVisibleWindows.clear();
+  }
+
+  /**
+   * Move o MiniHUD durante o drag
+   */
+  dragMiniHUD(deltaX: number, deltaY: number): void {
+    if (!this.miniHUDWindow || this.miniHUDWindow.isDestroyed()) return;
+    
+    const bounds = this.miniHUDWindow.getBounds();
+    const newX = bounds.x + deltaX;
+    const newY = bounds.y + deltaY;
+    
+    this.miniHUDWindow.setPosition(newX, newY);
   }
 }
 

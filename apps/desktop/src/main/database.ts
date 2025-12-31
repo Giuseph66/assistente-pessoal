@@ -529,10 +529,31 @@ export class DatabaseManager {
   /**
    * Obtém sessões por data (timestamp start/end)
    */
-  getAISessionsByDate(start: number, end: number): AISession[] {
-    const rows = this.db
-      .prepare('SELECT * FROM ai_sessions WHERE created_at >= ? AND created_at <= ? ORDER BY created_at DESC')
-      .all(start, end);
+  getAISessionsByDate(start: number, end: number, searchQuery?: string): AISession[] {
+    let rows;
+    if (searchQuery) {
+      const search = `%${searchQuery}%`;
+      rows = this.db
+        .prepare(`
+          SELECT DISTINCT s.* FROM ai_sessions s
+          LEFT JOIN ai_messages m ON m.session_id = s.id
+          WHERE (s.created_at >= ? AND s.created_at <= ?)
+          AND (
+            s.summary LIKE ? OR 
+            s.model_name LIKE ? OR 
+            s.provider_id LIKE ? OR 
+            m.content LIKE ? OR
+            m.recognized_text LIKE ?
+          )
+          ORDER BY s.created_at DESC
+        `)
+        .all(start, end, search, search, search, search, search);
+    } else {
+      rows = this.db
+        .prepare('SELECT * FROM ai_sessions WHERE created_at >= ? AND created_at <= ? ORDER BY created_at DESC')
+        .all(start, end);
+    }
+
     return rows.map((s: any) => ({
       id: s.id,
       screenshotId: s.screenshot_id,
@@ -565,6 +586,22 @@ export class DatabaseManager {
    */
   updateAISessionSummary(id: number, summary: string): void {
     this.db.prepare('UPDATE ai_sessions SET summary = ? WHERE id = ?').run(summary, id);
+  }
+
+  /**
+   * Deleta uma sessão e suas mensagens
+   */
+  deleteAISession(id: number): void {
+    const deleteMessages = this.db.prepare('DELETE FROM ai_messages WHERE session_id = ?');
+    const deleteRuns = this.db.prepare('DELETE FROM ai_runs WHERE session_id = ?');
+    const deleteSession = this.db.prepare('DELETE FROM ai_sessions WHERE id = ?');
+
+    // Executa em transação para garantir integridade
+    this.db.transaction(() => {
+      deleteMessages.run(id);
+      deleteRuns.run(id);
+      deleteSession.run(id);
+    })();
   }
 
   // ========== AI Message Methods ==========

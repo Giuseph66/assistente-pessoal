@@ -386,7 +386,11 @@ export function TranscriptionPanel(): JSX.Element {
 
   const toggleSystemStt = async () => {
     if (!window.systemStt) return;
-    if (systemStatus.state === 'running' || systemStatus.state === 'starting') {
+    if (
+      systemStatus.state === 'running' ||
+      systemStatus.state === 'listening' ||
+      systemStatus.state === 'starting'
+    ) {
       await window.systemStt.stop();
       return;
     }
@@ -451,9 +455,13 @@ export function TranscriptionPanel(): JSX.Element {
     );
   };
 
-  const isSttRunning = sttStatus.state === 'running' || sttStatus.state === 'starting';
+  const isSttRunning =
+    sttStatus.state === 'running' || sttStatus.state === 'listening' || sttStatus.state === 'starting';
   const isSystemRecording = recorderStatus.state === 'recording';
-  const isSystemSttRunning = systemStatus.state === 'running' || systemStatus.state === 'starting';
+  const isSystemSttRunning =
+    systemStatus.state === 'running' ||
+    systemStatus.state === 'listening' ||
+    systemStatus.state === 'starting';
   const systemLevel = isSystemSttRunning
     ? systemSttLevel
     : isSystemRecording
@@ -604,7 +612,10 @@ export function TranscriptionPanel(): JSX.Element {
                   <div className="waveform-label">Gravando audio...</div>
                 </div>
               )}
-              {!isRecording && (sttStatus.state === 'running' || sttStatus.state === 'starting') && (
+              {!isRecording &&
+                (sttStatus.state === 'running' ||
+                  sttStatus.state === 'listening' ||
+                  sttStatus.state === 'starting') && (
                 <div className="waveform-container">
                   <AudioVisualizer analyser={sttMicAnalyser} />
                   <div className="waveform-label">Monitorando microfone (STT)...</div>

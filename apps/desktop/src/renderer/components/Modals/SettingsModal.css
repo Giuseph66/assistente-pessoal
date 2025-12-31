@@ -12,7 +12,10 @@
     justify-content: center;
     animation: fadeIn var(--transition-fast);
 }
-
+.modal-footer-buttons {
+    display: flex;
+    gap: 8px;
+}
 .modal-window {
     width: 860px;
     height: 640px;
@@ -1474,9 +1477,19 @@
 }
 
 .power-btn:hover {
-    background-color: #111111;
-    color: #ffffff;
+    background-color: #331010;
+    color: #f70e0e;
     border-color: #333333;
+}
+
+.minimize-btn {
+    margin-left: 8px;
+}
+
+.minimize-btn:hover {
+    background-color: #1a0a2e;
+    color: #8b5cf6;
+    border-color: #4c1d95;
 }
 
 .btn-save {

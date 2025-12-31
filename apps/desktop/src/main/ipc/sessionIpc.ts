@@ -54,19 +54,21 @@ export function registerSessionIpc(db: DatabaseManager): void {
 
     // --- AI Chat Sessions (New) ---
 
-    ipcMain.handle('session:list', async (_event, { date }: { date?: number }) => {
+    ipcMain.handle('session:list', async (_event, { date, search }: { date?: number, search?: string }) => {
         try {
             const targetDate = date || Date.now();
             const startOfDay = new Date(targetDate).setHours(0, 0, 0, 0);
             const endOfDay = new Date(targetDate).setHours(23, 59, 59, 999);
 
-            const sessions = db.getAISessionsByDate(startOfDay, endOfDay);
+            const sessions = db.getAISessionsByDate(startOfDay, endOfDay, search);
+            
+            // O DatabaseManager já retorna os objetos mapeados para camelCase
             return sessions.map(s => ({
                 id: s.id,
-                createdAt: s.created_at,
-                modelName: s.model_name,
-                providerId: s.provider_id,
-                screenshotId: s.screenshot_id
+                createdAt: s.createdAt,
+                modelName: s.modelName,
+                providerId: s.providerId,
+                screenshotId: s.screenshotId
             }));
         } catch (error) {
             console.error('[Session] Failed to list sessions:', error);
@@ -118,5 +120,16 @@ export function registerSessionIpc(db: DatabaseManager): void {
 
     ipcMain.handle('session:getActive', async () => {
         return { sessionId: activeChatSessionId };
+    });
+
+    ipcMain.handle('session:delete', async (_event, sessionId: number) => {
+        try {
+            db.deleteAISession(sessionId);
+            console.log(`[Session] Deleted session #${sessionId}`);
+            return { success: true };
+        } catch (error) {
+            console.error('[Session] Failed to delete session:', error);
+            return { success: false, error: (error as Error).message };
+        }
     });
 }

@@ -6,6 +6,7 @@ import { HUD } from './components/HUD/HUD';
 import { HUDDropdown } from './components/HUD/HUDDropdown';
 import { CommandBar } from './components/CommandBar/CommandBar';
 import { VintageWindow } from './components/HUD/VintageWindow';
+import { MiniHUD } from './components/HUD/MiniHUD';
 import { initSttStore } from './store/sttStore';
 import './styles/global.css';
 
@@ -77,8 +78,19 @@ function App(): JSX.Element {
         return <VintageWindow visible={true} />;
     }
 
-    // Default to OverlayContainer (Main Session Window)
-    return <OverlayContainer />;
-}
+    if (route === '#mini-hud') {
+        return(<div style={{
+            width: '100vw',
+            height: '100vh',
+            display: 'flex',
+            justifyContent: 'center',
+            alignItems: 'center',
+            background: 'transparent'
+        }}><MiniHUD /></div>);
+    }
 
-export default App
+        // Default to OverlayContainer (Main Session Window)
+        return <OverlayContainer />;
+    }
+
+    export default App;

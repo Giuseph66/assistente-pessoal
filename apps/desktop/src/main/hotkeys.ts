@@ -32,7 +32,11 @@ export class HotkeysManager {
       logger.debug('Hotkey: start/stop STT');
       const controller = getSttController();
       const status = controller.getStatus();
-      if (status.state === 'running' || status.state === 'starting') {
+      if (
+        status.state === 'running' ||
+        status.state === 'listening' ||
+        status.state === 'starting'
+      ) {
         controller.stop();
       } else {
         controller.start();

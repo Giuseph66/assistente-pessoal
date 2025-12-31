@@ -56,7 +56,10 @@ export const HUD: React.FC<HUDProps> = ({
     const dropdownRef = useRef<HTMLDivElement>(null);
     const personalityDropdownRef = useRef<HTMLDivElement>(null);
     const sttState = useSttState();
-    const isSttListening = sttState.status.state === 'running' || sttState.status.state === 'starting';
+    const isSttListening =
+        sttState.status.state === 'running' ||
+        sttState.status.state === 'listening' ||
+        sttState.status.state === 'starting';
     const wasListeningRef = useRef(false);
     const prevListeningRef = useRef(false);
     const lastFinalTsRef = useRef<number | null>(null);
@@ -327,7 +330,14 @@ export const HUD: React.FC<HUDProps> = ({
 
     return (
         <div className="hud-container">
-            <div className="hud-bar" ref={hudBarRef}>
+            <div 
+                className="hud-bar" 
+                ref={hudBarRef}
+                onContextMenu={(e) => {
+                    e.preventDefault();
+                    window.electron.ipcRenderer.send('window:hud-right-click');
+                }}
+            >
                 {/* Compact Selector - Personality + Session */}
                 <div className="hud-section compact-selector" ref={personalityDropdownRef}>
                     <div

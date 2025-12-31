@@ -36,8 +36,12 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
     const [toast, setToast] = useState<string | null>(null);
 
     // Model selection states
-    const [analysisModel, setAnalysisModel] = useState('Gemini 3 Pro');
-    const [liveModel, setLiveModel] = useState('Gemini 2.0 Flash (Live)');
+    const [analysisModel, setAnalysisModel] = useState(() => {
+        return localStorage.getItem('ricky:analysis-model:google') || 'Gemini 3 Pro';
+    });
+    const [liveModel, setLiveModel] = useState(() => {
+        return localStorage.getItem('ricky:live-model:google') || 'Gemini Live';
+    });
 
     // API Key states
     const [geminiKey, setGeminiKey] = useState('');
@@ -79,6 +83,39 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
                 }
 
                 setIsKeyLoaded(true);
+
+                // Fetch STT config
+                try {
+                    const sttConfig = await window.stt?.getConfig?.();
+                    if (sttConfig?.provider) {
+                        if (sttConfig.provider === 'openai_realtime_transcribe') {
+                            setLiveModel(
+                                localStorage.getItem('ricky:live-model:openai') ||
+                                'OpenAI Realtime Transcription (gpt-4o-transcribe)'
+                            );
+                        } else if (sttConfig.provider === 'gemini_live') {
+                            setLiveModel(
+                                localStorage.getItem('ricky:live-model:google') || 'Gemini Live'
+                            );
+                        }
+                    }
+
+                    const isLocalSttEnabled = localStorage.getItem('ricky:use-local-stt') === 'true';
+                    if (!isLocalSttEnabled && config?.providerId && window.stt?.updateConfig) {
+                        const desiredProvider =
+                            config.providerId === 'gemini'
+                                ? 'gemini_live'
+                                : config.providerId === 'openai'
+                                ? 'openai_realtime_transcribe'
+                                : null;
+                        if (desiredProvider && desiredProvider !== sttConfig?.provider) {
+                            await window.stt.updateConfig({ provider: desiredProvider });
+                            localStorage.setItem('ricky:live-stt-provider', desiredProvider);
+                        }
+                    }
+                } catch {
+                    // ignore config load errors
+                }
 
                 // Fetch audio devices
                 const devices = await navigator.mediaDevices.enumerateDevices();
@@ -133,6 +170,20 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
             await (globalThis as any).ai.saveConfig({ providerId });
             setSavedProvider(providerId);
             showToast(`Configurações de ${apiProvider.toUpperCase()} aplicadas e ativadas!`);
+
+            const isLocalSttEnabled = localStorage.getItem('ricky:use-local-stt') === 'true';
+            if (!isLocalSttEnabled && window.stt?.updateConfig) {
+                const sttProvider =
+                    providerId === 'gemini'
+                        ? 'gemini_live'
+                        : providerId === 'openai'
+                        ? 'openai_realtime_transcribe'
+                        : null;
+                if (sttProvider) {
+                    await window.stt.updateConfig({ provider: sttProvider });
+                    localStorage.setItem('ricky:live-stt-provider', sttProvider);
+                }
+            }
         } catch (error) {
             showToast('Erro ao salvar as configurações.');
             console.error(error);
@@ -141,11 +192,20 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
 
     useEffect(() => {
         if (apiProvider === 'google') {
-            setAnalysisModel('Gemini 3 Pro');
-            setLiveModel('Gemini 2.0 Flash (Live)');
+            setAnalysisModel(
+                localStorage.getItem('ricky:analysis-model:google') || 'Gemini 3 Pro'
+            );
+            setLiveModel(
+                localStorage.getItem('ricky:live-model:google') || 'Gemini Live'
+            );
         } else if (apiProvider === 'openai') {
-            setAnalysisModel('GPT-5.2 Standard');
-            setLiveModel('GPT-4o Realtime');
+            setAnalysisModel(
+                localStorage.getItem('ricky:analysis-model:openai') || 'GPT-5.2 Standard'
+            );
+            setLiveModel(
+                localStorage.getItem('ricky:live-model:openai') ||
+                'OpenAI Realtime Transcription (gpt-4o-transcribe)'
+            );
         }
     }, [apiProvider]);
 
@@ -388,12 +448,29 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
 
             {/* Footer */}
             <div className="modal-footer">
-                <button className="power-btn" onClick={() => (globalThis as any).window.electron.ipcRenderer.send('app:quit')}>
+                <div className="modal-footer-buttons">
+                <button className="power-btn" onClick={() => (globalThis as any).window.electron.ipcRenderer.send('app:quit')}
+                    title="Sair do App"
+                    >
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                         <path d="M18.36 6.64a9 9 0 1 1-12.73 0" />
                         <line x1="12" y1="2" x2="12" y2="12" />
                     </svg>
                 </button>
+                <button 
+                    className="power-btn minimize-btn" 
+                    onClick={() => {
+                        (globalThis as any).window.electron.ipcRenderer.send('window:enter-mini-mode');
+                        onClose();
+                    }}
+                    title="Minimizar para Mini HUD"
+                    >
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <circle cx="12" cy="12" r="10" />
+                        <line x1="8" y1="12" x2="16" y2="12" />
+                    </svg>
+                </button>
+                    </div>
                 <button className="btn-save" onClick={onClose}>Salvar</button>
             </div>
         </div>

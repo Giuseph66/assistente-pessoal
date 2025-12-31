@@ -1,31 +1,36 @@
 import { EventEmitter } from 'events';
-import { STTConfig, STTFinalEvent, STTPartialEvent, STTStatus } from '@ricky/shared';
+import { LiveTranscriptionProviderId, STTConfig, STTFinalEvent, STTPartialEvent, STTStatus } from '@ricky/shared';
 import { getLogger } from '@ricky/logger';
 import { AudioSource } from './audio/AudioSource';
 import { ArecordAudioSource } from './audio/ArecordAudioSource';
 import { RendererAudioSource } from './audio/RendererAudioSource';
-import { STTProvider } from './providers/STTProvider';
-import { VoskProvider } from './providers/VoskProvider';
 import { ModelManager } from './models/ModelManager';
 import { getConfigStore } from '../storage/configStore';
+import { createLiveTranscriptionProvider, normalizeLiveProviderId } from './providers/LiveProviderRegistry';
+import type { LiveTranscriptionError, LiveTranscriptionProvider } from './providers/LiveTranscriptionProvider';
+import { DatabaseManager } from '../database';
+import { ApiKeyPool } from '../ai/ApiKeyPool';
+import { getKeyStorage } from '../ai/AIServiceManager';
 
 const logger = getLogger();
 
 export class STTController {
   private status: STTStatus = { state: 'idle' };
-  private provider: STTProvider | null = null;
+  private provider: LiveTranscriptionProvider | null = null;
   private audioSource: AudioSource | null = null;
   private emitter = new EventEmitter();
   private modelManager: ModelManager;
   private configStore = getConfigStore();
+  private db: DatabaseManager | null = null;
   private audioBytes = 0;
   private lastAudioAt = 0;
   private audioTimer: NodeJS.Timeout | null = null;
   private level = 0;
   private lastLevelAt = 0;
 
-  constructor(modelManager: ModelManager) {
+  constructor(modelManager: ModelManager, db?: DatabaseManager) {
     this.modelManager = modelManager;
+    this.db = db || null;
   }
 
   getStatus(): STTStatus {
@@ -41,36 +46,78 @@ export class STTController {
   }
 
   async start(configOverride?: STTConfig): Promise<void> {
-    if (this.status.state === 'running' || this.status.state === 'starting') {
+    if (
+      this.status.state === 'running' ||
+      this.status.state === 'listening' ||
+      this.status.state === 'starting'
+    ) {
       return;
     }
 
     const storedConfig = configOverride || this.getConfig();
-    const model = this.modelManager.listInstalled().find((item) => item.id === storedConfig.modelId);
-    if (!model) {
-      const message = 'Nenhum modelo Vosk instalado ou selecionado';
-      this.setStatus({ state: 'error', message });
-      throw new Error(message);
+    let effectiveConfig = storedConfig;
+    const providerId = normalizeLiveProviderId(storedConfig.provider);
+    let modelPath: string | undefined;
+    let modelName: string | undefined;
+
+    if (providerId === 'vox') {
+      const model = this.modelManager.listInstalled().find((item) => item.id === storedConfig.modelId);
+      if (!model) {
+        const message = 'Nenhum modelo Vosk instalado ou selecionado';
+        this.setStatus({ state: 'error', message, providerId });
+        throw new Error(message);
+      }
+      const targetSampleRate = model.defaultSampleRate || storedConfig.sampleRate;
+      if (targetSampleRate !== storedConfig.sampleRate) {
+        effectiveConfig = { ...storedConfig, sampleRate: targetSampleRate };
+      }
+      modelPath = model.installPath;
+      modelName = model.id;
+      this.emitDebug(`starting model=${model.id} path=${model.installPath}`);
+    } else if (providerId === 'openai_realtime_transcribe') {
+      modelName = 'gpt-4o-transcribe';
+      if (storedConfig.sampleRate !== 16000) {
+        effectiveConfig = { ...storedConfig, sampleRate: 16000 };
+      }
+    } else if (providerId === 'gemini_live') {
+      modelName = 'gemini-2.0-flash-live';
+      if (storedConfig.sampleRate !== 16000) {
+        effectiveConfig = { ...storedConfig, sampleRate: 16000 };
+      }
     }
 
-    const targetSampleRate = model.defaultSampleRate || storedConfig.sampleRate;
-    const config =
-      targetSampleRate !== storedConfig.sampleRate
-        ? { ...storedConfig, sampleRate: targetSampleRate }
-        : storedConfig;
-
-    this.setStatus({ state: 'starting' });
-    this.emitDebug(`starting model=${model.id} path=${model.installPath}`);
-    this.emitDebug(`sampleRate=${config.sampleRate}`);
+    this.setStatus({ state: 'starting', providerId });
+    this.emitDebug(`sampleRate=${effectiveConfig.sampleRate}`);
 
     try {
-      this.provider = new VoskProvider();
-      this.provider.onPartial((event) => this.emitter.emit('partial', event));
-      this.provider.onFinal((event) => this.emitter.emit('final', event));
-      this.provider.onError((message) => this.handleError(message));
-      this.provider.onDebug?.((message) => this.emitDebug(message));
+      const provider = createLiveTranscriptionProvider(providerId);
+      this.provider = provider;
+      provider.onPartial((event) => this.emitter.emit('partial', event));
+      provider.onFinal((event) => this.emitter.emit('final', event));
+      provider.onStatus((status) => this.setStatus(status));
+      provider.onError((error) => this.handleError(error));
+      provider.onDebug?.((message) => this.emitDebug(message));
 
-      await this.provider.start(config, model.installPath);
+      const apiKey =
+        providerId === 'openai_realtime_transcribe'
+          ? this.resolveApiKey('openai')
+          : providerId === 'gemini_live'
+          ? this.resolveApiKey('gemini')
+          : undefined;
+
+      if ((providerId === 'openai_realtime_transcribe' || providerId === 'gemini_live') && !apiKey) {
+        const message = `Chave de API nao configurada para ${providerId === 'gemini_live' ? 'Gemini' : 'OpenAI'}`;
+        this.setStatus({ state: 'error', message, providerId });
+        throw new Error(message);
+      }
+
+      await provider.start({
+        ...effectiveConfig,
+        provider: providerId,
+        modelPath,
+        modelName,
+        apiKey: apiKey?.key,
+      });
       this.emitDebug('provider ready');
 
       const sourceType = process.env.RICKY_STT_SOURCE || 'arecord';
@@ -81,10 +128,10 @@ export class STTController {
         this.audioBytes += chunk.length;
         this.lastAudioAt = Date.now();
         this.updateLevel(chunk);
-        this.provider?.feedAudio(chunk);
+        this.provider?.pushAudio(chunk);
       });
       this.audioSource.onError((error) => this.handleError(error.message));
-      await this.audioSource.start({ sampleRate: config.sampleRate });
+      await this.audioSource.start({ sampleRate: effectiveConfig.sampleRate });
       if (this.audioSource instanceof ArecordAudioSource) {
         const deviceName = this.audioSource.getDeviceName();
         this.emitDebug(`arecord started device=${deviceName}`);
@@ -93,7 +140,9 @@ export class STTController {
       }
       this.startAudioMonitor();
 
-      this.setStatus({ state: 'running', modelId: model.id, language: model.language });
+      if (providerId === 'vox' && modelName) {
+        this.setStatus({ state: 'listening', modelId: modelName, providerId });
+      }
     } catch (error) {
       this.handleError(error instanceof Error ? error.message : 'Falha ao iniciar STT');
       await this.cleanup();
@@ -101,11 +150,11 @@ export class STTController {
   }
 
   async stop(): Promise<void> {
-    if (this.status.state === 'idle' || this.status.state === 'stopping') {
+    if (this.status.state === 'idle' || this.status.state === 'stopping' || this.status.state === 'finalizing') {
       return;
     }
 
-    this.setStatus({ state: 'stopping' });
+    this.setStatus({ state: 'finalizing', providerId: this.status.providerId });
 
     await this.cleanup();
 
@@ -129,7 +178,7 @@ export class STTController {
     return () => this.emitter.off('status', cb);
   }
 
-  onError(cb: (message: string) => void): () => void {
+  onError(cb: (payload: { message: string; debug?: string; providerId?: LiveTranscriptionProviderId }) => void): () => void {
     this.emitter.on('error', cb);
     return () => this.emitter.off('error', cb);
   }
@@ -190,10 +239,14 @@ export class STTController {
     }
   }
 
-  private handleError(message: string): void {
-    logger.error({ message }, 'STT error');
-    this.emitter.emit('error', message);
-    this.setStatus({ state: 'error', message });
+  private handleError(error: LiveTranscriptionError | string): void {
+    const payload =
+      typeof error === 'string'
+        ? { message: error }
+        : { message: error.message, debug: error.debug, providerId: error.providerId };
+    logger.error({ message: payload.message, debug: payload.debug, providerId: payload.providerId }, 'STT error');
+    this.emitter.emit('error', payload);
+    this.setStatus({ state: 'error', message: payload.message, providerId: payload.providerId, debug: payload.debug });
   }
 
   private async cleanup(): Promise<void> {
@@ -215,5 +268,13 @@ export class STTController {
     this.emitter.emit('level', { level: 0, rms: 0, ts: Date.now() });
     this.audioSource = null;
     this.provider = null;
+  }
+
+  private resolveApiKey(providerId: 'openai' | 'gemini'): { key: string; keyId?: number } | null {
+    if (!this.db) return null;
+    const keyPool = new ApiKeyPool(this.db, getKeyStorage());
+    const apiKey = keyPool.getNextKey(providerId);
+    if (!apiKey?.key) return null;
+    return { key: apiKey.key, keyId: apiKey.id };
   }
 }

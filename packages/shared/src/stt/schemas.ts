@@ -1,8 +1,8 @@
 import { z } from 'zod';
 
 export const STTConfigSchema = z.object({
-  provider: z.literal('vosk'),
-  modelId: z.string().min(1),
+  provider: z.enum(['vosk', 'vox', 'openai_realtime_transcribe', 'gemini_live']),
+  modelId: z.string(),
   sampleRate: z.number().int().positive(),
   enablePartial: z.boolean(),
   partialDebounceMs: z.number().int().min(0),

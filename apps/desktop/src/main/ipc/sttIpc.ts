@@ -35,8 +35,8 @@ export function registerSttIpc(sttController: STTController): void {
   sttController.onStatus((status: STTStatus) => broadcast('stt.status', status));
   sttController.onPartial((event: STTPartialEvent) => broadcast('stt.partial', event));
   sttController.onFinal((event: STTFinalEvent) => broadcast('stt.final', event));
-  sttController.onError((message: string) =>
-    broadcast('stt.error', { message, ts: Date.now() })
+  sttController.onError((payload) =>
+    broadcast('stt.error', { ...payload, ts: Date.now() })
   );
   sttController.onDebug((message: string) =>
     broadcast('stt.debug', { message, ts: Date.now() })

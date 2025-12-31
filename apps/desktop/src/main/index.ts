@@ -301,6 +301,29 @@ app.whenReady().then(async () => {
         overlayManager.checkHUDOverVintage();
     });
 
+    ipcMain.on('window:hud-right-click', () => {
+        overlayManager.handleHUDRightClick();
+    });
+
+    ipcMain.on('window:enter-mini-mode', () => {
+        logger.info('Enter mini mode requested from settings');
+        overlayManager.enterMiniMode();
+    });
+
+    ipcMain.on('window:mini-hud-right-click', () => {
+        logger.info('Mini HUD right click received via IPC');
+        overlayManager.exitMiniMode();
+    });
+
+    ipcMain.on('window:mini-hud-quit', () => {
+        logger.info('Mini HUD quit requested');
+        app.quit();
+    });
+
+    ipcMain.on('window:mini-hud-drag', (_event, data: { deltaX: number; deltaY: number }) => {
+        overlayManager.dragMiniHUD(data.deltaX, data.deltaY);
+    });
+
     ipcMain.on('window:open-session', () => {
         const window = overlayManager.getWindow();
         if (window && !window.isDestroyed()) {
@@ -448,7 +471,7 @@ app.whenReady().then(async () => {
 
     // Initialize STT pipeline + IPC
     const modelManager = getModelManager();
-    const sttController = getSttController();
+    const sttController = getSttController(db);
     registerModelIpc(modelManager);
     registerSttIpc(sttController);
     const systemAudioManager = new SystemAudioSourceManager();
@@ -457,7 +480,7 @@ app.whenReady().then(async () => {
     registerSystemAudioIpc(systemAudioManager, systemAudioPreview);
     registerRecorderIpc(recorderService);
     registerTranscribeFileIpc(db, modelManager);
-    const systemSttController = new SystemSttController(modelManager);
+    const systemSttController = new SystemSttController(modelManager, db);
     registerSystemSttIpc(systemSttController);
 
     const translationService = new ScreenTranslateService();
@@ -710,7 +733,7 @@ app.on('will-quit', async (event) => {
         })
     );
 
-    const sttController = getSttController();
+    const sttController = getSttController(db);
     shutdownPromises.push(
         sttController.stop().catch((error) => {
             // Logar mas não bloquear o shutdown

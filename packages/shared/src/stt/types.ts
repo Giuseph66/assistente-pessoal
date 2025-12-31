@@ -1,5 +1,11 @@
 export type STTLanguage = 'pt-BR' | 'en-US' | string;
 
+export type LiveTranscriptionProviderId =
+  | 'vox'
+  | 'vosk'
+  | 'openai_realtime_transcribe'
+  | 'gemini_live';
+
 export type ModelDescriptor = {
   id: string;
   language: STTLanguage;
@@ -19,7 +25,7 @@ export type InstalledModel = ModelDescriptor & {
 };
 
 export type STTConfig = {
-  provider: 'vosk';
+  provider: LiveTranscriptionProviderId;
   modelId: string;
   sampleRate: number;
   enablePartial: boolean;
@@ -31,17 +37,33 @@ export type STTPartialEvent = {
   text: string;
   confidence?: number;
   ts: number;
+  meta?: {
+    providerId?: LiveTranscriptionProviderId;
+    language?: STTLanguage;
+    logprobs?: number[];
+    startMs?: number;
+    endMs?: number;
+  };
 };
 
 export type STTFinalEvent = {
   text: string;
   confidence?: number;
   ts: number;
+  meta?: {
+    providerId?: LiveTranscriptionProviderId;
+    language?: STTLanguage;
+    logprobs?: number[];
+    startMs?: number;
+    endMs?: number;
+  };
 };
 
 export type STTStatus =
   | { state: 'idle' }
-  | { state: 'starting' }
-  | { state: 'running'; modelId: string; language: STTLanguage }
+  | { state: 'starting'; providerId?: LiveTranscriptionProviderId }
+  | { state: 'listening'; providerId?: LiveTranscriptionProviderId; modelId?: string; language?: STTLanguage }
+  | { state: 'running'; providerId?: LiveTranscriptionProviderId; modelId?: string; language?: STTLanguage }
+  | { state: 'finalizing'; providerId?: LiveTranscriptionProviderId }
   | { state: 'stopping' }
-  | { state: 'error'; message: string };
+  | { state: 'error'; message: string; providerId?: LiveTranscriptionProviderId; debug?: string };

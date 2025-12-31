@@ -7,7 +7,7 @@ export type STTStoreState = {
 };
 
 const defaultConfig: STTConfig = {
-  provider: 'vosk',
+  provider: 'vox',
   modelId: '',
   sampleRate: 16000,
   enablePartial: true,

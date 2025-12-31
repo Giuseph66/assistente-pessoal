@@ -69,11 +69,20 @@ export function SttSettings(): JSX.Element {
           <button
             className="primary-button"
             onClick={handleStart}
-            disabled={status.state === 'running' || !hasActiveModel}
+            disabled={
+              status.state === 'running' ||
+              status.state === 'listening' ||
+              status.state === 'starting' ||
+              !hasActiveModel
+            }
           >
             Iniciar
           </button>
-          <button className="secondary-button" onClick={handleStop} disabled={status.state !== 'running'}>
+          <button
+            className="secondary-button"
+            onClick={handleStop}
+            disabled={!(status.state === 'running' || status.state === 'listening')}
+          >
             Parar
           </button>
         </div>

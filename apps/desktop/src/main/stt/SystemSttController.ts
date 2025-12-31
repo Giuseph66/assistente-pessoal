@@ -1,10 +1,14 @@
 import { EventEmitter } from 'events';
-import { STTConfig, STTFinalEvent, STTPartialEvent, STTStatus } from '@ricky/shared';
+import { LiveTranscriptionProviderId, STTConfig, STTFinalEvent, STTPartialEvent, STTStatus } from '@ricky/shared';
 import { getLogger } from '@ricky/logger';
-import { VoskProvider } from './providers/VoskProvider';
 import { ModelManager } from './models/ModelManager';
 import { getConfigStore } from '../storage/configStore';
 import { SystemAudioCapture } from '../audio/system/SystemAudioCapture';
+import { createLiveTranscriptionProvider, normalizeLiveProviderId } from './providers/LiveProviderRegistry';
+import type { LiveTranscriptionError, LiveTranscriptionProvider } from './providers/LiveTranscriptionProvider';
+import { DatabaseManager } from '../database';
+import { ApiKeyPool } from '../ai/ApiKeyPool';
+import { getKeyStorage } from '../ai/AIServiceManager';
 
 const logger = getLogger();
 
@@ -14,16 +18,18 @@ type StartOptions = {
 
 export class SystemSttController {
   private status: STTStatus = { state: 'idle' };
-  private provider: VoskProvider | null = null;
+  private provider: LiveTranscriptionProvider | null = null;
   private emitter = new EventEmitter();
   private modelManager: ModelManager;
   private configStore = getConfigStore();
+  private db: DatabaseManager | null = null;
   private audioSource: SystemAudioCapture | null = null;
   private level = 0;
   private lastLevelAt = 0;
 
-  constructor(modelManager: ModelManager) {
+  constructor(modelManager: ModelManager, db?: DatabaseManager) {
     this.modelManager = modelManager;
+    this.db = db || null;
   }
 
   getStatus(): STTStatus {
@@ -31,7 +37,7 @@ export class SystemSttController {
   }
 
   async start(options: StartOptions): Promise<void> {
-    if (this.status.state === 'running' || this.status.state === 'starting') {
+    if (this.status.state === 'listening' || this.status.state === 'running' || this.status.state === 'starting') {
       return;
     }
     if (!options.sourceId) {
@@ -41,41 +47,83 @@ export class SystemSttController {
     }
 
     const storedConfig = this.getConfig();
-    const model = this.modelManager.listInstalled().find((item) => item.id === storedConfig.modelId);
-    if (!model) {
-      const message = 'Nenhum modelo Vosk instalado ou selecionado';
-      this.setStatus({ state: 'error', message });
-      throw new Error(message);
+    let effectiveConfig = storedConfig;
+    const providerId = normalizeLiveProviderId(storedConfig.provider);
+    let modelPath: string | undefined;
+    let modelName: string | undefined;
+    let modelLanguage: string | undefined;
+
+    if (providerId === 'vox') {
+      const model = this.modelManager.listInstalled().find((item) => item.id === storedConfig.modelId);
+      if (!model) {
+        const message = 'Nenhum modelo Vosk instalado ou selecionado';
+        this.setStatus({ state: 'error', message, providerId });
+        throw new Error(message);
+      }
+      const targetSampleRate = model.defaultSampleRate || storedConfig.sampleRate;
+      if (targetSampleRate !== storedConfig.sampleRate) {
+        effectiveConfig = { ...storedConfig, sampleRate: targetSampleRate };
+      }
+      modelPath = model.installPath;
+      modelName = model.id;
+      modelLanguage = model.language;
+    } else if (providerId === 'openai_realtime_transcribe') {
+      modelName = 'gpt-4o-transcribe';
+      if (storedConfig.sampleRate !== 16000) {
+        effectiveConfig = { ...storedConfig, sampleRate: 16000 };
+      }
+    } else if (providerId === 'gemini_live') {
+      modelName = 'gemini-2.0-flash-live';
+      if (storedConfig.sampleRate !== 16000) {
+        effectiveConfig = { ...storedConfig, sampleRate: 16000 };
+      }
     }
 
-    const targetSampleRate = model.defaultSampleRate || storedConfig.sampleRate;
-    const config: STTConfig =
-      targetSampleRate !== storedConfig.sampleRate
-        ? { ...storedConfig, sampleRate: targetSampleRate }
-        : storedConfig;
-
-    this.setStatus({ state: 'starting' });
+    this.setStatus({ state: 'starting', providerId });
 
     try {
-      this.provider = new VoskProvider();
-      this.provider.onPartial((event) => this.emitter.emit('partial', event));
-      this.provider.onFinal((event) => this.emitter.emit('final', event));
-      this.provider.onError((message) => this.handleError(message));
-      this.provider.onDebug?.((message) => this.emitter.emit('debug', message));
+      const provider = createLiveTranscriptionProvider(providerId);
+      this.provider = provider;
+      provider.onPartial((event) => this.emitter.emit('partial', event));
+      provider.onFinal((event) => this.emitter.emit('final', event));
+      provider.onStatus((status) => this.setStatus(status));
+      provider.onError((error) => this.handleError(error));
+      provider.onDebug?.((message) => this.emitter.emit('debug', message));
 
-      await this.provider.start(config, model.installPath);
+      const apiKey =
+        providerId === 'openai_realtime_transcribe'
+          ? this.resolveApiKey('openai')
+          : providerId === 'gemini_live'
+          ? this.resolveApiKey('gemini')
+          : undefined;
+
+      if ((providerId === 'openai_realtime_transcribe' || providerId === 'gemini_live') && !apiKey) {
+        const message = `Chave de API nao configurada para ${providerId === 'gemini_live' ? 'Gemini' : 'OpenAI'}`;
+        this.setStatus({ state: 'error', message, providerId });
+        throw new Error(message);
+      }
+
+      await provider.start({
+        ...effectiveConfig,
+        provider: providerId,
+        modelPath,
+        modelName,
+        apiKey: apiKey?.key,
+      });
 
       this.audioSource = new SystemAudioCapture();
       this.level = 0;
       this.lastLevelAt = 0;
       this.audioSource.onData((chunk) => {
         this.updateLevel(chunk);
-        this.provider?.feedAudio(chunk);
+        this.provider?.pushAudio(chunk);
       });
       this.audioSource.onError((error) => this.handleError(error.message));
-      await this.audioSource.start({ sourceId: options.sourceId, sampleRate: config.sampleRate });
+      await this.audioSource.start({ sourceId: options.sourceId, sampleRate: effectiveConfig.sampleRate });
 
-      this.setStatus({ state: 'running', modelId: model.id, language: model.language });
+      if (providerId === 'vox' && modelName) {
+        this.setStatus({ state: 'listening', modelId: modelName, language: modelLanguage, providerId });
+      }
     } catch (error) {
       this.handleError(error instanceof Error ? error.message : 'Falha ao iniciar STT do sistema');
       await this.cleanup();
@@ -83,11 +131,11 @@ export class SystemSttController {
   }
 
   async stop(): Promise<void> {
-    if (this.status.state === 'idle' || this.status.state === 'stopping') {
+    if (this.status.state === 'idle' || this.status.state === 'stopping' || this.status.state === 'finalizing') {
       return;
     }
 
-    this.setStatus({ state: 'stopping' });
+    this.setStatus({ state: 'finalizing', providerId: this.status.providerId });
 
     await this.cleanup();
 
@@ -111,7 +159,9 @@ export class SystemSttController {
     return () => this.emitter.off('status', cb);
   }
 
-  onError(cb: (message: string) => void): () => void {
+  onError(
+    cb: (payload: { message: string; debug?: string; providerId?: LiveTranscriptionProviderId }) => void
+  ): () => void {
     this.emitter.on('error', cb);
     return () => this.emitter.off('error', cb);
   }
@@ -135,10 +185,14 @@ export class SystemSttController {
     this.emitter.emit('status', status);
   }
 
-  private handleError(message: string): void {
-    logger.error({ message }, 'System STT error');
-    this.emitter.emit('error', message);
-    this.setStatus({ state: 'error', message });
+  private handleError(error: LiveTranscriptionError | string): void {
+    const payload =
+      typeof error === 'string'
+        ? { message: error }
+        : { message: error.message, debug: error.debug, providerId: error.providerId };
+    logger.error({ message: payload.message, debug: payload.debug, providerId: payload.providerId }, 'System STT error');
+    this.emitter.emit('error', payload);
+    this.setStatus({ state: 'error', message: payload.message, providerId: payload.providerId, debug: payload.debug });
   }
 
   private async cleanup(): Promise<void> {
@@ -178,5 +232,13 @@ export class SystemSttController {
       this.lastLevelAt = now;
       this.emitter.emit('level', { level: this.level, rms, ts: now });
     }
+  }
+
+  private resolveApiKey(providerId: 'openai' | 'gemini'): { key: string; keyId?: number } | null {
+    if (!this.db) return null;
+    const keyPool = new ApiKeyPool(this.db, getKeyStorage());
+    const apiKey = keyPool.getNextKey(providerId);
+    if (!apiKey?.key) return null;
+    return { key: apiKey.key, keyId: apiKey.id };
   }
 }

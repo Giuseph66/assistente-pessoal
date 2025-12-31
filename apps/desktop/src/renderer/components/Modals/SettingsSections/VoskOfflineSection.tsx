@@ -28,13 +28,53 @@ export const VoskOfflineSection: React.FC<VoskOfflineSectionProps> = ({ showToas
     handleSetActive,
   } = useVoskSettings();
 
-  const toggleLocalStt = () => {
+  React.useEffect(() => {
+    if (!window.stt) return;
+    if (isLocalSttEnabled) {
+      window.stt.updateConfig({ provider: 'vox' }).catch(() => undefined);
+    }
+  }, [isLocalSttEnabled]);
+
+  const toggleLocalStt = async () => {
     const newValue = !isLocalSttEnabled;
     setIsLocalSttEnabled(newValue);
     localStorage.setItem('ricky:use-local-stt', String(newValue));
     showToast(`Transcrição Local ${newValue ? 'Ativada' : 'Desativada'}`);
     // Dispatch event to notify other components (like ApiSection)
     window.dispatchEvent(new Event('storage'));
+    try {
+      if (!window.stt) return;
+      if (newValue) {
+        const current = await window.stt.getConfig();
+        if (current?.provider && current.provider !== 'vox' && current.provider !== 'vosk') {
+          localStorage.setItem('ricky:live-stt-provider', current.provider);
+        }
+        await window.stt.updateConfig({ provider: 'vox' });
+      } else {
+        let nextProvider: string | null = null;
+        try {
+          const aiConfig = await window.ai?.getConfig?.();
+          if (aiConfig?.providerId === 'gemini') {
+            nextProvider = 'gemini_live';
+          } else if (aiConfig?.providerId === 'openai') {
+            nextProvider = 'openai_realtime_transcribe';
+          }
+        } catch {
+          nextProvider = null;
+        }
+
+        if (!nextProvider) {
+          nextProvider = localStorage.getItem('ricky:live-stt-provider');
+        }
+
+        if (nextProvider) {
+          await window.stt.updateConfig({ provider: nextProvider as any });
+          localStorage.setItem('ricky:live-stt-provider', nextProvider);
+        }
+      }
+    } catch {
+      // ignore stt config errors
+    }
   };
 
   const activeModel = installed.find((m) => m.id === activeModelId);
@@ -192,4 +232,3 @@ export const VoskOfflineSection: React.FC<VoskOfflineSectionProps> = ({ showToas
     </div>
   );
 };
-
