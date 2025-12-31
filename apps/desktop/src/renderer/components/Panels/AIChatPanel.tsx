@@ -11,7 +11,11 @@ interface Message {
   createdAt: number;
 }
 
-export function AIChatPanel(): JSX.Element {
+interface AIChatPanelProps {
+  sessionId?: number | null;
+}
+
+export function AIChatPanel({ sessionId }: AIChatPanelProps): JSX.Element {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [isAnalyzing, setIsAnalyzing] = useState(false);
@@ -34,6 +38,16 @@ export function AIChatPanel(): JSX.Element {
   const activeUrlRef = useRef<string | null>(null);
   const analysisMetaRef = useRef<{ startedAt: number; timeoutMs: number } | null>(null);
   const configRef = useRef<any>(null);
+
+  useEffect(() => {
+    if (sessionId) {
+      chatSessionIdRef.current = sessionId;
+      loadMessages(sessionId);
+    } else {
+      setMessages([]);
+      chatSessionIdRef.current = null;
+    }
+  }, [sessionId]);
 
   useEffect(() => {
     loadConfig();
@@ -183,7 +197,7 @@ export function AIChatPanel(): JSX.Element {
     try {
       const messagesValue = await window.ai.getMessages(sessionId);
       const loadedMessages: Message[] = [];
-      
+
       for (const msg of messagesValue) {
         const message: Message = {
           id: msg.id,
@@ -291,7 +305,7 @@ export function AIChatPanel(): JSX.Element {
       // Inicia captura de screenshot
       if (window.electron?.ipcRenderer) {
         window.electron.ipcRenderer.send('screenshot:startCapture');
-        
+
         // Aguarda o screenshot ser capturado (via WebSocket ou polling)
         // Por enquanto, vamos usar um timeout e tentar obter o último screenshot
         setTimeout(async () => {
@@ -343,17 +357,17 @@ export function AIChatPanel(): JSX.Element {
     const connect = () => {
       try {
         ws = new WebSocket('ws://127.0.0.1:8788');
-        
+
         ws.onopen = () => {
           console.log('WebSocket connected for AI Chat');
         };
-        
+
         ws.onmessage = async (event) => {
           try {
             const data = JSON.parse(event.data);
             if (data.type === 'screenshot.captured' && data.payload?.screenshot) {
               const screenshot: Screenshot = data.payload.screenshot;
-              
+
               // Carrega a imagem
               try {
                 const result = await window.electron?.ipcRenderer.invoke('screenshot:read', {
@@ -363,7 +377,7 @@ export function AIChatPanel(): JSX.Element {
                 if (result?.buffer) {
                   const blob = new Blob([result.buffer], { type: result.mimeType || 'image/png' });
                   const url = URL.createObjectURL(blob);
-                  
+
                   setAttachedScreenshot((prev) => {
                     if (prev?.url) {
                       URL.revokeObjectURL(prev.url);
@@ -403,11 +417,11 @@ export function AIChatPanel(): JSX.Element {
   }, []);
 
   return (
-    <div 
-      className="ai-chat-panel" 
-      style={{ 
-        display: 'flex', 
-        flexDirection: 'column', 
+    <div
+      className="ai-chat-panel"
+      style={{
+        display: 'flex',
+        flexDirection: 'column',
         height: '100%',
         WebkitAppRegion: 'no-drag',
         position: 'relative',
@@ -631,9 +645,9 @@ export function AIChatPanel(): JSX.Element {
       )}
 
       {/* Input */}
-      <div 
-        style={{ 
-          padding: '12px', 
+      <div
+        style={{
+          padding: '12px',
           borderTop: '1px solid #444',
           WebkitAppRegion: 'no-drag',
           position: 'relative',
@@ -774,9 +788,9 @@ export function AIChatPanel(): JSX.Element {
               border: 'none',
               borderRadius: '4px',
               cursor: (!input.trim() && !attachedScreenshot && !activeScreenshot) || isAnalyzing ? 'not-allowed' : 'pointer',
-            opacity: (!input.trim() && !attachedScreenshot && !activeScreenshot) || isAnalyzing ? 0.5 : 1,
-            alignSelf: 'flex-end',
-          }}
+              opacity: (!input.trim() && !attachedScreenshot && !activeScreenshot) || isAnalyzing ? 0.5 : 1,
+              alignSelf: 'flex-end',
+            }}
           >
             Enviar
           </button>
@@ -812,7 +826,7 @@ export function AIChatPanel(): JSX.Element {
             onClick={(e) => e.stopPropagation()}
           >
             <h3 style={{ marginTop: 0 }}>Configurações do Chat</h3>
-            
+
             {config && (
               <>
                 <div style={{ marginBottom: '15px' }}>

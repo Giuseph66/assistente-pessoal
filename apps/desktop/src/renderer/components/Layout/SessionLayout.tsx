@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { SessionSidebar } from '../Panels/SessionSidebar';
+import { SessionPanel } from '../Panels/SessionPanel';
+import { SessionSummary } from '../Panels/SessionSummary';
 import { WindowControls } from './WindowControls';
 import './SessionLayout.css';
 
@@ -7,15 +8,24 @@ interface SessionLayoutProps {
     children?: React.ReactNode;
     activePanel?: string;
     onPanelChange?: (panel: string) => void;
+    activeSessionId?: number | null;
 }
 
 export const SessionLayout: React.FC<SessionLayoutProps> = ({
     children,
     activePanel,
-    onPanelChange
+    onPanelChange,
+    activeSessionId
 }) => {
     const [isSessionActive, setIsSessionActive] = useState(false);
     const [showSessionPanel, setShowSessionPanel] = useState(false);
+    const [activeView, setActiveView] = useState<'session' | 'summary'>('session');
+
+    useEffect(() => {
+        if (activeSessionId) {
+            setIsSessionActive(true);
+        }
+    }, [activeSessionId]);
 
     // Keyboard shortcuts
     useEffect(() => {
@@ -42,10 +52,16 @@ export const SessionLayout: React.FC<SessionLayoutProps> = ({
                         </svg>
                     </button>
                     <div className="header-tabs-pill">
-                        <button className={`header-tab ${isSessionActive ? 'active' : ''}`}>
-                            Sessão
+                        <button
+                            className={`header-tab ${activeView === 'session' ? 'active' : ''}`}
+                            onClick={() => setActiveView('session')}
+                        >
+                            Sessão {activeSessionId ? `#${activeSessionId}` : ''}
                         </button>
-                        <button className="header-tab">
+                        <button
+                            className={`header-tab ${activeView === 'summary' ? 'active' : ''}`}
+                            onClick={() => setActiveView('summary')}
+                        >
                             Resumo
                         </button>
                     </div>
@@ -157,75 +173,11 @@ export const SessionLayout: React.FC<SessionLayoutProps> = ({
                         </div>
                     </div>
                 ) : (
-                    <div className="active-session-view">
-                        <div className="transcription-container">
-                            {/* Transcription Header */}
-                            <div className="transcription-header">
-                                <div className="header-left-group">
-                                    <div className="language-selector">
-                                        <span className="flag">🇧🇷</span>
-                                        <span className="lang-text">Portuguese (BR)</span>
-                                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M6 9l6 6 6-6" /></svg>
-                                    </div>
-                                    <div className="transcription-pill">
-                                        Transcription
-                                    </div>
-                                    <div className="sparkle-btn">
-                                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" /></svg>
-                                    </div>
-                                </div>
-                                <div className="header-right-group">
-                                    <span className="timestamp">Hoje, 21:01</span>
-                                    <div className="control-buttons">
-                                        <button className="ctrl-btn"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><rect x="6" y="4" width="4" height="16" /><rect x="14" y="4" width="4" height="16" /></svg></button>
-                                        <button className="ctrl-btn"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><rect x="4" y="4" width="16" height="16" /></svg></button>
-                                        <button className="ctrl-btn"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><line x1="5" y1="12" x2="19" y2="12" /></svg></button>
-                                    </div>
-                                </div>
-                            </div>
-
-                            {/* Transcription Body */}
-                            <div className="transcription-body">
-                                <div className="status-message">
-                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10" /><line x1="12" y1="16" x2="12" y2="12" /><line x1="12" y1="8" x2="12.01" y2="8" /></svg>
-                                    <span>Checking microphone permissions...</span>
-                                    <span className="msg-time">Hoje, 21:01</span>
-                                </div>
-                                {/* More messages would go here */}
-                            </div>
-
-                            {/* Audio Meters Section */}
-                            <div className="audio-meters-section">
-                                <div className="meters-header">
-                                    <div className="meters-title">
-                                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 1v22M17 5v14M22 9v6M7 5v14M2 9v6" /></svg>
-                                        <span>Medidores de áudio</span>
-                                    </div>
-                                    <span className="hide-text">Clique para ocultar</span>
-                                </div>
-
-                                <div className="meter-row">
-                                    <div className="meter-info">
-                                        <span className="meter-label">VOCÊ</span>
-                                        <button className="meter-settings"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z" /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1Z" /></svg></button>
-                                    </div>
-                                    <div className="meter-bar-container">
-                                        <div className="meter-bar active" style={{ width: '15%' }}></div>
-                                    </div>
-                                </div>
-
-                                <div className="meter-row">
-                                    <div className="meter-info">
-                                        <span className="meter-label">OUTROS</span>
-                                        <button className="meter-settings"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z" /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1Z" /></svg></button>
-                                    </div>
-                                    <div className="meter-bar-container">
-                                        <div className="meter-bar" style={{ width: '0%' }}></div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
+                    activeView === 'session' ? (
+                        <SessionPanel sessionId={activeSessionId} />
+                    ) : (
+                        activeSessionId ? <SessionSummary sessionId={activeSessionId} /> : null
+                    )
                 )}
             </main>
         </div>

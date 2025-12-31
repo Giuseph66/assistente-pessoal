@@ -241,13 +241,13 @@ export class DatabaseManager {
   listRecordings(limit: number = 20, sourceType?: string): RecordingEntry[] {
     const rows = sourceType
       ? this.db
-          .prepare(
-            'SELECT * FROM recordings WHERE source_type = ? ORDER BY created_at DESC LIMIT ?'
-          )
-          .all(sourceType, limit)
+        .prepare(
+          'SELECT * FROM recordings WHERE source_type = ? ORDER BY created_at DESC LIMIT ?'
+        )
+        .all(sourceType, limit)
       : this.db
-          .prepare('SELECT * FROM recordings ORDER BY created_at DESC LIMIT ?')
-          .all(limit);
+        .prepare('SELECT * FROM recordings ORDER BY created_at DESC LIMIT ?')
+        .all(limit);
     return rows.map((row: any) => ({
       id: row.id,
       path: row.path,
@@ -345,7 +345,7 @@ export class DatabaseManager {
     const existing = this.db
       .prepare('SELECT id FROM ai_providers WHERE id = ?')
       .get(provider.id);
-    
+
     if (existing) {
       this.db
         .prepare('UPDATE ai_providers SET display_name = ?, base_url = ?, updated_at = ? WHERE id = ?')
@@ -372,7 +372,7 @@ export class DatabaseManager {
     const existing = this.db
       .prepare('SELECT id FROM ai_models WHERE provider_id = ? AND model_name = ?')
       .get(model.provider_id, model.model_name);
-    
+
     if (existing) {
       this.db
         .prepare('UPDATE ai_models SET enabled = ?, metadata_json = ? WHERE provider_id = ? AND model_name = ?')
@@ -513,7 +513,7 @@ export class DatabaseManager {
   saveAISession(session: Omit<AISession, 'id' | 'created_at'>): number {
     const result = this.db
       .prepare('INSERT INTO ai_sessions (screenshot_id, provider_id, model_name, created_at) VALUES (?, ?, ?, ?)')
-      .run(session.screenshot_id, session.provider_id, session.model_name, Date.now());
+      .run(session.screenshotId || null, session.providerId, session.modelName, Date.now());
     return result.lastInsertRowid as number;
   }
 
@@ -524,6 +524,15 @@ export class DatabaseManager {
     return this.db
       .prepare('SELECT * FROM ai_sessions WHERE screenshot_id = ? ORDER BY created_at DESC')
       .all(screenshotId) as AISession[];
+  }
+
+  /**
+   * Obtém sessões por data (timestamp start/end)
+   */
+  getAISessionsByDate(start: number, end: number): AISession[] {
+    return this.db
+      .prepare('SELECT * FROM ai_sessions WHERE created_at >= ? AND created_at <= ? ORDER BY created_at DESC')
+      .all(start, end) as AISession[];
   }
 
   /**

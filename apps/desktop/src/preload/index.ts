@@ -72,6 +72,13 @@ const modelApi = {
 const systemAudioApi = {
     listSources: () => ipcRenderer.invoke('systemAudio.listSources'),
     detectDefaultMonitor: () => ipcRenderer.invoke('systemAudio.detectDefaultMonitor'),
+    startPreview: (sourceId: string) => ipcRenderer.invoke('systemAudio.startPreview', sourceId),
+    stopPreview: () => ipcRenderer.invoke('systemAudio.stopPreview'),
+    onLevel: (cb: (payload: any) => void) => {
+        const listener = (_event: any, payload: any) => cb(payload)
+        ipcRenderer.on('systemAudio.level', listener)
+        return () => ipcRenderer.removeListener('systemAudio.level', listener)
+    },
 }
 
 const recorderApi = {

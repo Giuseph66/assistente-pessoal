@@ -97,6 +97,19 @@ export function OverlayContainer(): JSX.Element {
     };
   }, []);
 
+  const [activeSessionId, setActiveSessionId] = useState<number | null>(null);
+
+  useEffect(() => {
+    const handleSessionActivated = (_event: any, { sessionId }: { sessionId: number }) => {
+      setActiveSessionId(sessionId);
+    };
+    // Use type assertion for window.electron if needed or ensure types are correct
+    (window as any).electron.ipcRenderer.on('session:activated', handleSessionActivated);
+    return () => {
+      (window as any).electron.ipcRenderer.removeListener('session:activated', handleSessionActivated);
+    };
+  }, []);
+
   if (isTranslationOverlay) {
     return <TranslationOverlayRoot />;
   }
@@ -116,7 +129,7 @@ export function OverlayContainer(): JSX.Element {
       <DragHandle />
 
       {/* New Session Layout */}
-      <SessionLayout />
+      <SessionLayout activeSessionId={activeSessionId} />
     </div>
   );
 }

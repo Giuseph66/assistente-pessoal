@@ -92,8 +92,11 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
     // Audio states
     const [selectedMic, setSelectedMic] = useState('Microfone Padrão');
     const [selectedSystemAudio, setSelectedSystemAudio] = useState('Áudio do Sistema (Nativo)');
+    const [micDevices, setMicDevices] = useState<{ id: string; label: string }[]>([]);
+    const [systemAudioSources, setSystemAudioSources] = useState<{ id: string; name: string }[]>([]);
     const sttMicAnalyser = useSttMicAnalyser();
     const [localAnalyser, setLocalAnalyser] = useState<AnalyserNode | null>(null);
+    const [systemLevel, setSystemLevel] = useState(0);
     const localStreamRef = useRef<MediaStream | null>(null);
     const localContextRef = useRef<AudioContext | null>(null);
 
@@ -104,8 +107,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
                 // Fetch keys
                 const keys = await (globalThis as any).ai.listKeys();
                 if (keys && Array.isArray(keys)) {
-                    const gKey = keys.find((k: any) => k.providerId === 'gemini');
-                    const oKey = keys.find((k: any) => k.providerId === 'openai');
+                    const gKey = keys.find((k: { providerId: string; last4: string }) => k.providerId === 'gemini');
+                    const oKey = keys.find((k: { providerId: string; last4: string }) => k.providerId === 'openai');
 
                     if (gKey) setGeminiKey(`•••• •••• •••• ${gKey.last4}`);
                     if (oKey) setOpenaiKey(`•••• •••• •••• ${oKey.last4}`);
@@ -120,6 +123,30 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
                 }
 
                 setIsKeyLoaded(true);
+
+                // Fetch audio devices
+                const devices = await navigator.mediaDevices.enumerateDevices();
+                const mics = devices
+                    .filter((d: MediaDeviceInfo) => d.kind === 'audioinput')
+                    .map((d: MediaDeviceInfo) => ({
+                        id: d.deviceId,
+                        label: d.deviceId === 'default' ? 'Padrão' : (d.label || `Microfone ${d.deviceId.slice(0, 5)}`)
+                    }))
+                    .sort((a, b) => (a.id === 'default' ? -1 : b.id === 'default' ? 1 : 0)); // Ensure Padrão is first
+
+                setMicDevices(mics);
+                if (mics.length > 0) {
+                    // Prefer 'Padrão' if available, otherwise first
+                    const defaultMic = mics.find(m => m.id === 'default') || mics[0];
+                    setSelectedMic(defaultMic.label);
+                }
+
+                // Fetch system audio sources
+                const sources = await (globalThis as any).window.electron.ipcRenderer.invoke('systemAudio.listSources');
+                if (sources && Array.isArray(sources)) {
+                    setSystemAudioSources(sources);
+                    setSelectedSystemAudio('Padrão');
+                }
             } catch (error) {
                 console.error('Failed to fetch settings data:', error);
             }
@@ -170,7 +197,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
         if (isOpen && activeSection === 'audio') {
             const startLocalMic = async () => {
                 try {
-                    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                    const mic = micDevices.find((d: { label: string }) => d.label === selectedMic);
+                    const constraints = mic ? { audio: { deviceId: { exact: mic.id } } } : { audio: true };
+                    const stream = await navigator.mediaDevices.getUserMedia(constraints);
                     const context = new AudioContext();
                     const source = context.createMediaStreamSource(stream);
                     const analyser = context.createAnalyser();
@@ -184,10 +213,12 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
                     console.error('Error capturing local mic:', err);
                 }
             };
+
             startLocalMic();
         } else {
+            // Cleanup Mic
             if (localStreamRef.current) {
-                localStreamRef.current.getTracks().forEach(t => t.stop());
+                localStreamRef.current.getTracks().forEach((t: MediaStreamTrack) => t.stop());
                 localStreamRef.current = null;
             }
             if (localContextRef.current) {
@@ -196,7 +227,42 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
             }
             setLocalAnalyser(null);
         }
-    }, [isOpen, activeSection]);
+    }, [isOpen, activeSection, selectedMic, micDevices]);
+
+    // System Audio Preview Effect
+    useEffect(() => {
+        if (isOpen && activeSection === 'audio') {
+            let isMounted = true;
+
+            const startPreview = async () => {
+                try {
+                    let source = systemAudioSources.find((s: { name: string; id: string }) => s.name === selectedSystemAudio);
+                    if (selectedSystemAudio === 'Padrão') {
+                        source = systemAudioSources.find((s: any) => s.isDefaultCandidate) || systemAudioSources[0];
+                    }
+                    if (source && (globalThis as any).window.systemAudio) {
+                        await (globalThis as any).window.systemAudio.startPreview(source.id);
+                    }
+                } catch (err) {
+                    console.error('Failed to start system audio preview:', err);
+                }
+            };
+
+            const offLevel = (globalThis as any).window.systemAudio?.onLevel((payload: { level: number }) => {
+                if (isMounted) setSystemLevel(payload.level);
+            });
+
+            startPreview();
+
+            return () => {
+                isMounted = false;
+                if (offLevel) offLevel();
+                (globalThis as any).window.systemAudio?.stopPreview();
+                setSystemLevel(0);
+            };
+        }
+        return undefined;
+    }, [isOpen, activeSection, selectedSystemAudio, systemAudioSources]);
 
     const showToast = (message: string) => {
         setToast(message);
@@ -247,38 +313,69 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
                                 </div>
                             ) : (
                                 <div className="api-selection-content">
-                                    <div className="api-selection-header">
-                                        <div className="api-key-group">
-                                            <label>Chave de API {apiProvider === 'google' ? 'Google Gemini' : 'OpenAI'}</label>
-                                            <div className="api-key-input-wrapper">
-                                                <input
-                                                    type="password"
-                                                    placeholder={`Cole sua chave da ${apiProvider === 'google' ? 'Google' : 'OpenAI'} aqui...`}
-                                                    className="api-key-input"
-                                                    value={apiProvider === 'google' ? geminiKey : openaiKey}
-                                                    onChange={(e) => {
-                                                        const val = (e.target as any).value;
-                                                        if (apiProvider === 'google') setGeminiKey(val);
-                                                        else setOpenaiKey(val);
-                                                    }}
-                                                />
-                                                <button
-                                                    onClick={() => {
-                                                        const url = apiProvider === 'google'
-                                                            ? 'https://aistudio.google.com/api-keys'
-                                                            : 'https://platform.openai.com/api-keys';
-                                                        (globalThis as any).electron.ipcRenderer.send('app:open-url', url);
-                                                    }}
-                                                    className="get-key-link"
-                                                    style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
-                                                >
-                                                    Obter Chave
-                                                </button>
+                                    <div className="api-key-card-premium">
+                                        <div className="api-key-card-header">
+                                            <div className="provider-info-main">
+                                                <div className={`provider-icon-circle ${apiProvider}`}>
+                                                    {apiProvider === 'google' ? (
+                                                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" /></svg>
+                                                    ) : (
+                                                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 2v20M2 12h20" /></svg>
+                                                    )}
+                                                </div>
+                                                <div className="provider-text-details">
+                                                    <div className="provider-title-row">
+                                                        <h4>{apiProvider === 'google' ? 'Google Gemini API' : 'OpenAI API'}</h4>
+                                                        <span className={`status-badge-premium ${savedProvider === (apiProvider === 'google' ? 'gemini' : apiProvider) ? 'active' : ''}`}>
+                                                            {savedProvider === (apiProvider === 'google' ? 'gemini' : apiProvider) ? 'Conectado' : 'Pendente'}
+                                                        </span>
+                                                    </div>
+                                                    <p>{apiProvider === 'google' ? 'Modelos Pro e Flash de última geração' : 'GPT-4o e modelos de raciocínio o1'}</p>
+                                                </div>
                                             </div>
+                                            <button
+                                                className="btn-get-key-premium"
+                                                onClick={() => {
+                                                    const url = apiProvider === 'google'
+                                                        ? 'https://aistudio.google.com/api-keys'
+                                                        : 'https://platform.openai.com/api-keys';
+                                                    (globalThis as any).electron.ipcRenderer.send('app:open-url', url);
+                                                }}
+                                            >
+                                                Obter Chave <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6M15 3h6v6M10 14L21 3" /></svg>
+                                            </button>
                                         </div>
-                                        <button className="btn-use-model" onClick={handleSaveKey}>
-                                            Usar este modelo
-                                        </button>
+
+                                        <div className="api-key-input-section-premium">
+                                            <div className="input-with-label-premium">
+                                                <label>Sua Chave de Acesso</label>
+                                                <div className="premium-input-wrapper">
+                                                    <input
+                                                        type="password"
+                                                        placeholder={`sk-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx`}
+                                                        className="premium-api-input"
+                                                        value={apiProvider === 'google' ? geminiKey : openaiKey}
+                                                        onChange={(e) => {
+                                                            const val = (e.target as any).value;
+                                                            if (apiProvider === 'google') setGeminiKey(val);
+                                                            else setOpenaiKey(val);
+                                                        }}
+                                                    />
+                                                    <div className="input-glow"></div>
+                                                </div>
+                                            </div>
+
+                                            <button
+                                                className={`btn-activate-premium ${savedProvider === (apiProvider === 'google' ? 'gemini' : apiProvider) ? 'active' : ''}`}
+                                                onClick={handleSaveKey}
+                                            >
+                                                {savedProvider === (apiProvider === 'google' ? 'gemini' : apiProvider) ? (
+                                                    <><span className="check-circle">✓</span> Ativado</>
+                                                ) : (
+                                                    'Ativar Modelo'
+                                                )}
+                                            </button>
+                                        </div>
                                     </div>
 
                                     <div className="performance-section-title">Configurações de Desempenho</div>
@@ -368,7 +465,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
                                             setSelectedMic(val);
                                             showToast(`Microfone alterado para ${val}`);
                                         }}
-                                        options={['Microfone Padrão', 'Microfone Interno', 'Headset Externo']}
+                                        options={micDevices.length > 0 ? micDevices.map(d => d.label) : ['Microfone Padrão']}
                                     />
                                 </div>
                                 <div className="visualizer-container-settings">
@@ -390,11 +487,11 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
                                             setSelectedSystemAudio(val);
                                             showToast(`Fonte de áudio alterada para ${val}`);
                                         }}
-                                        options={['Áudio do Sistema (Nativo)', 'Monitor de Saída']}
+                                        options={['Padrão', ...systemAudioSources.map(s => s.name)]}
                                     />
                                 </div>
                                 <div className="visualizer-container-settings">
-                                    <AudioVisualizer analyser={null} level={0.2} width={220} height={60} />
+                                    <AudioVisualizer analyser={null} level={systemLevel} width={220} height={60} />
                                     <span className="visualizer-label">Monitorando saída...</span>
                                 </div>
                             </div>

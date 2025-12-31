@@ -144,7 +144,7 @@ export function registerAIIpc(db: DatabaseManager): void {
   ipcMain.handle('ai.testKey', async (_event, { keyId, providerId }: { keyId: number; providerId: AIProviderId }) => {
     const keyPool = new ApiKeyPool(db, keyStorage);
     const provider = providerManager.getProvider(providerId);
-    
+
     if (!provider) {
       return { success: false, error: 'Provider not found' };
     }
@@ -165,7 +165,7 @@ export function registerAIIpc(db: DatabaseManager): void {
           );
           return fallback.ok;
         }
-        
+
         // Para OpenAI, testa listando modelos
         if (providerId === 'openai') {
           const response = await fetch('https://api.openai.com/v1/models', {
@@ -191,7 +191,7 @@ export function registerAIIpc(db: DatabaseManager): void {
   ipcMain.handle('ai.analyzeScreenshot', async (_event, request: AnalyzeScreenshotRequest) => {
     const aiService = getAIService(db);
     const config = aiService.getConfig();
-    
+
     // Broadcast início
     broadcast('ai.analysis.started', {
       mode: 'screenshot',
@@ -202,7 +202,7 @@ export function registerAIIpc(db: DatabaseManager): void {
 
     try {
       const result = await aiService.analyzeScreenshot(request);
-      
+
       // Broadcast sucesso
       broadcast('ai.analysis.completed', {
         mode: 'screenshot',
@@ -217,7 +217,7 @@ export function registerAIIpc(db: DatabaseManager): void {
       return result;
     } catch (error: any) {
       logger.error({ err: error }, 'Analysis failed');
-      
+
       // Broadcast erro
       broadcast('ai.analysis.error', {
         mode: 'screenshot',
@@ -274,7 +274,7 @@ export function registerAIIpc(db: DatabaseManager): void {
 
   ipcMain.handle('ai.extractText', async (_event, screenshotId: number) => {
     const aiService = getAIService(db);
-    
+
     try {
       const text = await aiService.extractText(screenshotId);
       return { success: true, text };

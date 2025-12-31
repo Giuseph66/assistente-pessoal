@@ -23,11 +23,13 @@ import { registerAIIpc } from './ipc/aiIpc'
 import { registerSystemSttIpc } from './ipc/systemSttIpc'
 import { registerScreenshotIpc } from './ipc/screenshotIpc'
 import { registerTranslationIpc } from './ipc/translationIpc'
+import { registerSessionIpc } from './ipc/sessionIpc'
 import { getModelManager, getSttController } from './stt/sttService'
 import { SystemAudioSourceManager } from './audio/system/SystemAudioSourceManager'
 import { RecorderService } from './audio/recording/RecorderService'
 import { SystemSttController } from './stt/SystemSttController'
 import { ScreenTranslateService } from './services/translation/ScreenTranslateService'
+import { SystemAudioPreviewService } from './audio/system/SystemAudioPreviewService'
 
 function createWindow(): void {
     // Create the browser window.
@@ -242,6 +244,16 @@ app.whenReady().then(async () => {
         overlayManager.createCommandBarWindow();
     });
 
+    ipcMain.on('window:open-session', () => {
+        const window = overlayManager.getWindow();
+        if (window) {
+            window.show();
+            window.focus();
+        } else {
+            overlayManager.createWindow();
+        }
+    });
+
     ipcMain.on('window:minimize', (event) => {
         const win = BrowserWindow.fromWebContents(event.sender);
         win?.minimize();
@@ -276,8 +288,9 @@ app.whenReady().then(async () => {
     registerModelIpc(modelManager);
     registerSttIpc(sttController);
     const systemAudioManager = new SystemAudioSourceManager();
+    const systemAudioPreview = new SystemAudioPreviewService();
     const recorderService = new RecorderService(db);
-    registerSystemAudioIpc(systemAudioManager);
+    registerSystemAudioIpc(systemAudioManager, systemAudioPreview);
     registerRecorderIpc(recorderService);
     registerTranscribeFileIpc(db, modelManager);
     const systemSttController = new SystemSttController(modelManager);
@@ -288,6 +301,9 @@ app.whenReady().then(async () => {
 
     // Initialize AI IPC
     registerAIIpc(db);
+
+    // Initialize Session IPC
+    registerSessionIpc(db);
 
     // Initialize default AI providers in database
     try {

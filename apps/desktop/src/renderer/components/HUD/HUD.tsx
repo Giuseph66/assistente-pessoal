@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import './HUD.css';
 
 interface HUDProps {
@@ -8,6 +8,15 @@ interface HUDProps {
     onStartListening: () => void;
     isListening: boolean;
     activeAssistant?: string;
+    sessionId?: number | null;
+    onSessionSelect?: (sessionId: number) => void;
+}
+
+interface Session {
+    id: number;
+    createdAt: number;
+    modelName: string;
+    providerId: string;
 }
 
 export const HUD: React.FC<HUDProps> = ({
@@ -16,19 +25,110 @@ export const HUD: React.FC<HUDProps> = ({
     onOpenSessionPanel,
     onStartListening,
     isListening,
-    activeAssistant = 'Maya'
+    activeAssistant = 'My IA',
+    sessionId,
+    onSessionSelect
 }) => {
     const [inputValue, setInputValue] = useState('');
+    const [showSessionDropdown, setShowSessionDropdown] = useState(false);
+    const [sessions, setSessions] = useState<Session[]>([]);
+    const dropdownRef = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        const handleClickOutside = (event: MouseEvent) => {
+            if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+                setShowSessionDropdown(false);
+            }
+        };
+
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, []);
+
+    const fetchSessions = async () => {
+        try {
+            const result = await window.electron.ipcRenderer.invoke('session:list', { date: Date.now() });
+            setSessions(result || []);
+        } catch (error) {
+            console.error('Failed to fetch sessions:', error);
+        }
+    };
+
+    const toggleDropdown = () => {
+        if (!showSessionDropdown) {
+            fetchSessions();
+        }
+        setShowSessionDropdown(!showSessionDropdown);
+    };
+
+    const handleSessionClick = (id: number) => {
+        window.electron.ipcRenderer.send('session:activate', id);
+        window.electron.ipcRenderer.send('window:open-session');
+        setShowSessionDropdown(false);
+    };
+
+    const createNewSession = async () => {
+        try {
+            // Get current config for provider/model
+            const config = await window.ai.getConfig();
+            const result = await window.electron.ipcRenderer.invoke('session:create', {
+                providerId: config.providerId,
+                modelName: config.modelName
+            });
+            if (result && result.sessionId) {
+                window.electron.ipcRenderer.send('session:activate', result.sessionId);
+                window.electron.ipcRenderer.send('window:open-session');
+            }
+            setShowSessionDropdown(false);
+        } catch (error) {
+            console.error('Failed to create session:', error);
+        }
+    };
 
     return (
         <div className="hud-container">
             <div className="hud-bar">
-                {/* Assistant Selector */}
-                <div className="hud-section assistant-selector">
-                    <span className="assistant-name">{activeAssistant}</span>
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                        <path d="M6 9l6 6 6-6" />
-                    </svg>
+                {/* Assistant Selector / Session Dropdown */}
+                <div className="hud-section assistant-selector" ref={dropdownRef}>
+                    <div
+                        className="assistant-trigger"
+                        onClick={toggleDropdown}
+                        style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}
+                    >
+                        <span className="assistant-name">{activeAssistant}</span>
+                        {sessionId && <span className="session-badge">#{sessionId}</span>}
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <path d="M6 9l6 6 6-6" />
+                        </svg>
+                    </div>
+
+                    {showSessionDropdown && (
+                        <div className="session-dropdown">
+                            <div className="dropdown-header">
+                                <span>Sessões de Hoje</span>
+                                <button onClick={createNewSession} className="new-session-btn" title="Nova Sessão">+</button>
+                            </div>
+                            <div className="dropdown-list">
+                                {sessions.length === 0 ? (
+                                    <div className="empty-sessions">Nenhuma sessão hoje</div>
+                                ) : (
+                                    sessions.map(session => (
+                                        <div
+                                            key={session.id}
+                                            className={`session-item ${sessionId === session.id ? 'active' : ''}`}
+                                            onClick={() => handleSessionClick(session.id)}
+                                        >
+                                            <span className="session-id">#{session.id}</span>
+                                            <span className="session-time">
+                                                {new Date(session.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                            </span>
+                                            <span className="session-model">{session.modelName}</span>
+                                        </div>
+                                    ))
+                                )}
+                            </div>
+                        </div>
+                    )}
                 </div>
 
                 <div className="hud-divider" />

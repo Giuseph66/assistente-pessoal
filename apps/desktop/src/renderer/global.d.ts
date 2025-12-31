@@ -131,16 +131,25 @@ declare global {
     };
     overlay: {
       setContentProtection: (enabled: boolean) => Promise<{ success: boolean; error?: string }>;
-      getContentProtection: () => Promise<{ 
-        enabled: boolean; 
-        platform: string; 
-        supportsContentProtection: boolean; 
+      getContentProtection: () => Promise<{
+        enabled: boolean;
+        platform: string;
+        supportsContentProtection: boolean;
         usingWorkarounds: boolean;
       }>;
       getDisplayCount: () => Promise<{ count: number }>;
       moveToNextMonitor: () => Promise<{ success: boolean; error?: string }>;
     };
+    electron: {
+      ipcRenderer: {
+        send: (channel: string, ...args: any[]) => void;
+        on: (channel: string, listener: (event: any, ...args: any[]) => void) => void;
+        once: (channel: string, listener: (event: any, ...args: any[]) => void) => void;
+        removeListener: (channel: string, listener: (event: any, ...args: any[]) => void) => void;
+        invoke: (channel: string, ...args: any[]) => Promise<any>;
+      };
+    };
   }
 }
 
-export {};
+export { };
