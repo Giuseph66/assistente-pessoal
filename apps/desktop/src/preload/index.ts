@@ -225,6 +225,8 @@ const aiApi = {
     savePromptTemplate: (template: any) => ipcRenderer.invoke('ai.savePromptTemplate', template),
     getPromptTemplates: (category?: string) => ipcRenderer.invoke('ai.getPromptTemplates', category),
     deletePromptTemplate: (id: number) => ipcRenderer.invoke('ai.deletePromptTemplate', id),
+    setActivePersonality: (promptId: number | null) => ipcRenderer.invoke('ai.setActivePersonality', promptId),
+    getActivePersonality: () => ipcRenderer.invoke('ai.getActivePersonality'),
     onAnalysisStarted: (cb: (event: any) => void) => {
         const listener = (_event: any, payload: any) => cb(payload)
         ipcRenderer.on('ai.analysis.started', listener)
@@ -240,6 +242,12 @@ const aiApi = {
         ipcRenderer.on('ai.analysis.error', listener)
         return () => ipcRenderer.removeListener('ai.analysis.error', listener)
     },
+}
+
+const permissionsApi = {
+    checkMicrophone: () => ipcRenderer.invoke('permissions:checkMicrophone'),
+    requestMicrophone: () => ipcRenderer.invoke('permissions:requestMicrophone'),
+    openSystemSettings: () => ipcRenderer.invoke('permissions:openSystemSettings'),
 }
 
 // Use `contextBridge` APIs to expose Electron APIs to
@@ -258,6 +266,7 @@ if (process.contextIsolated) {
         contextBridge.exposeInMainWorld('overlay', overlayApi)
         contextBridge.exposeInMainWorld('translation', translationApi)
         contextBridge.exposeInMainWorld('ai', aiApi)
+        contextBridge.exposeInMainWorld('permissions', permissionsApi)
     } catch (error) {
         console.error(error)
     }
@@ -284,4 +293,6 @@ if (process.contextIsolated) {
     window.translation = translationApi
     // @ts-ignore (define in dts)
     window.ai = aiApi
+    // @ts-ignore (define in dts)
+    window.permissions = permissionsApi
 }

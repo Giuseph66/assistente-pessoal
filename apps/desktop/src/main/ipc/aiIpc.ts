@@ -36,6 +36,25 @@ const broadcast = (channel: string, payload: any) => {
 export function registerAIIpc(db: DatabaseManager): void {
   const keyStorage = getKeyStorage();
   const providerManager = getAIProviderManager();
+  let activePersonalityId: number | null = null;
+
+  const mapPromptTemplate = (t: any) => ({
+    id: t.id,
+    name: t.name,
+    promptText: t.prompt_text,
+    category: t.category,
+    createdAt: t.created_at,
+    updatedAt: t.updated_at,
+  });
+
+  const broadcastPersonalitiesUpdate = () => {
+    const templates = db.getPromptTemplates('personality').map(mapPromptTemplate);
+    broadcast('ai.personalities.updated', {
+      personalities: templates,
+      activePersonalityId,
+    });
+  };
+
   const ensureDefaultTemplates = () => {
     const existing = db.getPromptTemplates();
     if (existing.length > 0) return;
@@ -241,6 +260,7 @@ export function registerAIIpc(db: DatabaseManager): void {
       startedAt: Date.now(),
       timeoutMs: config.timeoutMs,
       sessionId: request.sessionId,
+      prompt: request.prompt,
     });
 
     try {
@@ -320,9 +340,23 @@ export function registerAIIpc(db: DatabaseManager): void {
 
   // ========== Prompt Templates ==========
 
-  ipcMain.handle('ai.savePromptTemplate', async (_event, template: Omit<PromptTemplate, 'id' | 'created_at' | 'updated_at'>) => {
-    const id = db.savePromptTemplate(template);
-    logger.info({ id, name: template.name }, 'Prompt template saved');
+  ipcMain.handle('ai.savePromptTemplate', async (_event, template: any) => {
+    // Converter de camelCase (frontend) para snake_case (database)
+    // O frontend envia { name, promptText, category }
+    // O database espera { name, prompt_text, category }
+    const dbTemplate = {
+      name: template.name,
+      prompt_text: template.promptText || template.prompt_text || '',
+      category: template.category || null,
+    };
+
+    if (!dbTemplate.name || !dbTemplate.prompt_text) {
+      throw new Error('Nome e prompt_text são obrigatórios');
+    }
+
+    const id = db.savePromptTemplate(dbTemplate as any);
+    logger.info({ id, name: dbTemplate.name }, 'Prompt template saved');
+    broadcastPersonalitiesUpdate();
     return { success: true, id };
   });
 
@@ -340,7 +374,21 @@ export function registerAIIpc(db: DatabaseManager): void {
 
   ipcMain.handle('ai.deletePromptTemplate', async (_event, id: number) => {
     db.deletePromptTemplate(id);
+    broadcastPersonalitiesUpdate();
     return { success: true };
+  });
+
+  // ========== Active Personality ==========
+
+  ipcMain.handle('ai.setActivePersonality', async (_event, promptId: number | null) => {
+    activePersonalityId = promptId;
+    logger.info({ promptId }, 'Active personality updated');
+    broadcastPersonalitiesUpdate();
+    return { success: true, promptId };
+  });
+
+  ipcMain.handle('ai.getActivePersonality', async () => {
+    return { promptId: activePersonalityId };
   });
 
   logger.info('AI IPC handlers registered');

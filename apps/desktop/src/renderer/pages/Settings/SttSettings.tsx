@@ -1,67 +1,31 @@
-import { useEffect, useMemo, useState } from 'react';
-import { InstalledModel, ModelDescriptor, STTConfig, STTStatus } from '@ricky/shared';
+import { useMemo, useState } from 'react';
 import { StatusBadge } from '../../components/StatusBadge';
 import { ModelInstaller } from './ModelInstaller';
-
-const defaultStatus: STTStatus = { state: 'idle' };
+import { useVoskSettings } from './useVoskSettings';
 
 export function SttSettings(): JSX.Element {
-  const [status, setStatus] = useState<STTStatus>(defaultStatus);
-  const [config, setConfig] = useState<STTConfig | null>(null);
-  const [installed, setInstalled] = useState<InstalledModel[]>([]);
-  const [catalog, setCatalog] = useState<ModelDescriptor[]>([]);
-  const [activeModelId, setActiveModelId] = useState('');
-  const [progress, setProgress] = useState<Record<string, number>>({});
-  const [error, setError] = useState<string | null>(null);
   const [importPath, setImportPath] = useState('');
   const [importLanguage, setImportLanguage] = useState('pt-BR');
   const [importLabel, setImportLabel] = useState('');
   const [languageFilter, setLanguageFilter] = useState('all');
+
+  const {
+    status,
+    config,
+    installed,
+    catalog,
+    activeModelId,
+    progress,
+    error,
+    setError,
+    handleConfigChange,
+    handleInstall,
+    handleRemove,
+    handleSetActive,
+    handleImport,
+  } = useVoskSettings();
+
   const hasActiveModel = Boolean(activeModelId);
-
-  useEffect(() => {
-    const loadData = async () => {
-      const [statusValue, configValue, installedValue, catalogValue, activeValue] = await Promise.all([
-        window.stt.getStatus(),
-        window.stt.getConfig(),
-        window.models.listInstalled(),
-        window.models.listCatalog(),
-        window.models.getActive(),
-      ]);
-      setStatus(statusValue || defaultStatus);
-      setConfig(configValue);
-      setInstalled(installedValue || []);
-      setCatalog(catalogValue || []);
-      setActiveModelId(activeValue || '');
-    };
-
-    loadData();
-
-    const offStatus = window.stt.onStatus((nextStatus) => setStatus(nextStatus));
-    const offError = window.stt.onError((payload) => setError(payload.message));
-    const offProgress = window.models.onInstallProgress((payload) =>
-      setProgress((prev) => ({ ...prev, [payload.modelId]: payload.progress }))
-    );
-    const offDone = window.models.onInstallDone(() => refreshModels());
-    const offInstallError = window.models.onInstallError((payload) => setError(payload.message));
-
-    return () => {
-      offStatus();
-      offError();
-      offProgress();
-      offDone();
-      offInstallError();
-    };
-  }, []);
-
-  const refreshModels = async () => {
-    const [installedValue, activeValue] = await Promise.all([
-      window.models.listInstalled(),
-      window.models.getActive(),
-    ]);
-    setInstalled(installedValue || []);
-    setActiveModelId(activeValue || '');
-  };
 
   const languageOptions = useMemo(() => {
     const languages = new Set(catalog.map((model) => model.language));
@@ -73,12 +37,6 @@ export function SttSettings(): JSX.Element {
     return catalog.filter((model) => model.language === languageFilter);
   }, [catalog, languageFilter]);
 
-  const handleConfigChange = async (patch: Partial<STTConfig>) => {
-    if (!config) return;
-    const updated = await window.stt.updateConfig(patch);
-    setConfig(updated);
-  };
-
   const handleStart = async () => {
     try {
       await window.stt.start();
@@ -88,35 +46,14 @@ export function SttSettings(): JSX.Element {
   };
   const handleStop = () => window.stt.stop();
 
-  const handleInstall = async (modelId: string) => {
-    setError(null);
-    await window.models.install(modelId);
-    await refreshModels();
-  };
-
-  const handleRemove = async (modelId: string) => {
-    setError(null);
-    await window.models.remove(modelId);
-    await refreshModels();
-  };
-
-  const handleSetActive = async (modelId: string) => {
-    setError(null);
-    await window.models.setActive(modelId);
-    setActiveModelId(modelId);
-    await window.stt.updateConfig({ modelId });
-  };
-
-  const handleImport = async () => {
+  const handleImportClick = async () => {
     if (!importPath.trim()) return;
-    setError(null);
-    await window.models.import(importPath.trim(), {
+    await handleImport(importPath, {
       language: importLanguage,
       label: importLabel.trim() || undefined,
     });
     setImportPath('');
     setImportLabel('');
-    await refreshModels();
   };
 
   return (
@@ -182,7 +119,7 @@ export function SttSettings(): JSX.Element {
             <option value="pt-BR">pt-BR</option>
             <option value="en-US">en-US</option>
           </select>
-          <button className="secondary-button" onClick={handleImport}>
+          <button className="secondary-button" onClick={handleImportClick}>
             Importar
           </button>
         </div>

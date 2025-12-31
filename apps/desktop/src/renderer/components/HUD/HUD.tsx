@@ -1,4 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
+import { useSttState } from '../../store/sttStore';
 import './HUD.css';
 
 interface HUDProps {
@@ -19,6 +21,15 @@ interface Session {
     providerId: string;
 }
 
+interface Personality {
+    id: number;
+    name: string;
+    promptText: string;
+    category?: string;
+    createdAt: number;
+    updatedAt: number;
+}
+
 export const HUD: React.FC<HUDProps> = ({
     onOpenSettings,
     onOpenHistory,
@@ -31,8 +42,25 @@ export const HUD: React.FC<HUDProps> = ({
 }) => {
     const [inputValue, setInputValue] = useState('');
     const [showSessionDropdown, setShowSessionDropdown] = useState(false);
+    const [showPersonalityDropdown, setShowPersonalityDropdown] = useState(false);
     const [sessions, setSessions] = useState<Session[]>([]);
+    const [personalities, setPersonalities] = useState<Personality[]>([]);
+    const [activePersonality, setActivePersonality] = useState<Personality | null>(null);
+    const [activeSessionId, setActiveSessionId] = useState<number | null>(sessionId ?? null);
+    const [isSendingQuestion, setIsSendingQuestion] = useState(false);
+    
+    // Estado para feedback visual quando sobre a janela vintage
+    const [isOverVintageWindow, setIsOverVintageWindow] = useState(false);
+    const hudBarRef = useRef<HTMLDivElement>(null);
+
     const dropdownRef = useRef<HTMLDivElement>(null);
+    const personalityDropdownRef = useRef<HTMLDivElement>(null);
+    const sttState = useSttState();
+    const isSttListening = sttState.status.state === 'running' || sttState.status.state === 'starting';
+    const wasListeningRef = useRef(false);
+    const prevListeningRef = useRef(false);
+    const lastFinalTsRef = useRef<number | null>(null);
+    const inputValueRef = useRef(inputValue);
 
     useEffect(() => {
         const handleClickOutside = (event: MouseEvent) => {
@@ -41,9 +69,102 @@ export const HUD: React.FC<HUDProps> = ({
             }
         };
 
+        // Listener para quando o dropdown flutuante fechar
+        const handleDropdownClosed = () => {
+            setShowPersonalityDropdown(false);
+        };
+
+        // Listener para quando uma personalidade for selecionada
+        const handlePersonalitySelected = (_event: any, { personalityId }: { personalityId: number }) => {
+            const selected = personalities.find(p => p.id === personalityId);
+            if (selected) {
+                handlePersonalitySelect(selected);
+            }
+        };
+
+        const handleSessionActivated = (_event: any, { sessionId: nextSessionId }: { sessionId: number }) => {
+            setActiveSessionId(nextSessionId);
+        };
+
         document.addEventListener('mousedown', handleClickOutside);
-        return () => document.removeEventListener('mousedown', handleClickOutside);
+        window.electron.ipcRenderer.on('hud-dropdown:closed', handleDropdownClosed);
+        window.electron.ipcRenderer.on('hud:personality-selected', handlePersonalitySelected);
+        window.electron.ipcRenderer.on('session:activated', handleSessionActivated);
+
+        return () => {
+            document.removeEventListener('mousedown', handleClickOutside);
+            window.electron.ipcRenderer.removeListener('hud-dropdown:closed', handleDropdownClosed);
+            window.electron.ipcRenderer.removeListener('hud:personality-selected', handlePersonalitySelected);
+            window.electron.ipcRenderer.removeListener('session:activated', handleSessionActivated);
+        };
+    }, [personalities]);
+
+    useEffect(() => {
+        // Listener para receber estado de colisão com a janela vintage (para feedback visual futuro)
+        const handleVintageCollision = (_event: any, isColliding: boolean) => {
+            setIsOverVintageWindow(isColliding);
+        };
+
+        window.electron.ipcRenderer.on('vintage:drop-zone-active', handleVintageCollision);
+
+        return () => {
+            window.electron.ipcRenderer.removeListener('vintage:drop-zone-active', handleVintageCollision);
+        };
     }, []);
+
+    useEffect(() => {
+        const fetchData = async () => {
+            await fetchPersonalities();
+            await fetchSessions();
+        };
+        fetchData();
+    }, []);
+
+    useEffect(() => {
+        if (typeof sessionId === 'number') {
+            setActiveSessionId(sessionId);
+        }
+    }, [sessionId]);
+
+    useEffect(() => {
+        inputValueRef.current = inputValue;
+    }, [inputValue]);
+
+    useEffect(() => {
+        if (isSttListening) {
+            wasListeningRef.current = true;
+        }
+    }, [isSttListening]);
+
+    useEffect(() => {
+        const partialText = sttState.partial?.text;
+        if (isSttListening && partialText) {
+            setInputValue(partialText);
+        }
+    }, [sttState.partial, isSttListening]);
+
+    useEffect(() => {
+        const latestFinal = sttState.finals[0];
+        if (!latestFinal || latestFinal.ts === lastFinalTsRef.current) return;
+        lastFinalTsRef.current = latestFinal.ts;
+        if (wasListeningRef.current) {
+            setInputValue(latestFinal.text || '');
+        }
+    }, [sttState.finals]);
+
+    useEffect(() => {
+        const wasListening = prevListeningRef.current;
+        const shouldAutoSend =
+            wasListening && !isSttListening && sttState.status.state === 'idle' && wasListeningRef.current;
+        if (shouldAutoSend) {
+            const textToSend = inputValueRef.current.trim();
+            if (textToSend) {
+                handleHudQuestionSend();
+            }
+            wasListeningRef.current = false;
+        }
+        prevListeningRef.current = isSttListening;
+    }, [isSttListening, sttState.status.state]);
 
     const fetchSessions = async () => {
         try {
@@ -85,50 +206,153 @@ export const HUD: React.FC<HUDProps> = ({
         }
     };
 
+    const fetchPersonalities = async () => {
+        try {
+            const templates = await (globalThis as any).window.ai.getPromptTemplates('personality');
+            setPersonalities(templates);
+            // Set first as active if none selected
+            if (templates.length > 0 && !activePersonality) {
+                setActivePersonality(templates[0]);
+            }
+        } catch (error) {
+            console.error('Failed to fetch personalities:', error);
+        }
+    };
+
+    const togglePersonalityDropdown = async (event: React.MouseEvent) => {
+        if (showPersonalityDropdown) {
+            window.electron.ipcRenderer.send('hud-dropdown:hide');
+            setShowPersonalityDropdown(false);
+            return;
+        }
+
+        // Busca dados se necessário
+        if (personalities.length === 0) {
+            await fetchPersonalities();
+        }
+        if (sessions.length === 0) {
+            await fetchSessions();
+        }
+
+        // Obtém a posição do clique
+        const rect = event.currentTarget.getBoundingClientRect();
+        const x = rect.left + rect.width / 2; // Centro do botão
+        const y = rect.top; // Topo do botão
+
+        // Prepara dados para enviar
+        const dropdownData = {
+            personalities,
+            sessions,
+            activePersonalityId: activePersonality?.id || null,
+            activeSessionId: activeSessionId || null,
+        };
+
+        // Abre a janela flutuante
+        await window.electron.ipcRenderer.invoke('hud-dropdown:show', { x, y, data: dropdownData });
+        setShowPersonalityDropdown(true);
+
+        // Listener para quando a janela fechar
+        const handleClose = () => {
+            setShowPersonalityDropdown(false);
+        };
+        window.electron.ipcRenderer.on('hud-dropdown:closed', handleClose);
+    };
+
+    const handlePersonalitySelect = (personality: Personality) => {
+        setActivePersonality(personality);
+        setShowPersonalityDropdown(false);
+        // TODO: Implement actual personality context injection
+        console.log('Selected personality:', personality.name, personality.promptText);
+    };
+
+    const getPersonalityInitials = (name: string) => {
+        if (!name) return 'AI';
+        const parts = name.split(' ');
+        if (parts.length >= 2) {
+            return (parts[0][0] + parts[1][0]).toUpperCase();
+        }
+        return name.slice(0, 2).toUpperCase();
+    };
+
+    const handleHudQuestionSend = async () => {
+        const prompt = inputValueRef.current.trim();
+        if (!prompt || isSendingQuestion) return;
+        setIsSendingQuestion(true);
+        setInputValue('');
+        inputValueRef.current = '';
+
+        try {
+            const config = await window.ai.getConfig();
+            let targetSessionId = sessionId ?? activeSessionId ?? null;
+
+            if (!targetSessionId) {
+                const result = await window.electron.ipcRenderer.invoke('session:create', {
+                    providerId: config.providerId,
+                    modelName: config.modelName
+                });
+                targetSessionId = result?.sessionId || null;
+            }
+
+            if (targetSessionId) {
+                window.electron.ipcRenderer.send('session:activate', targetSessionId);
+                window.electron.ipcRenderer.send('window:open-session');
+            }
+
+            await window.ai.analyzeText({
+                prompt,
+                sessionId: targetSessionId || undefined,
+                context: activePersonality?.promptText || undefined
+            });
+        } catch (error) {
+            console.error('Failed to send HUD question:', error);
+        } finally {
+            setIsSendingQuestion(false);
+        }
+    };
+
+    const handleHudInputKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
+        if (event.key === 'Enter') {
+            event.preventDefault();
+            handleHudQuestionSend();
+        }
+    };
+
+    const handleListeningToggle = () => {
+        if (isSttListening) {
+            window.electron.ipcRenderer.send('session:stop-listening');
+            return;
+        }
+        onStartListening();
+    };
+
     return (
         <div className="hud-container">
-            <div className="hud-bar">
-                {/* Assistant Selector / Session Dropdown */}
-                <div className="hud-section assistant-selector" ref={dropdownRef}>
+            <div className="hud-bar" ref={hudBarRef}>
+                {/* Compact Selector - Personality + Session */}
+                <div className="hud-section compact-selector" ref={personalityDropdownRef}>
                     <div
-                        className="assistant-trigger"
-                        onClick={toggleDropdown}
-                        style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}
+                        className="compact-trigger"
+                        onClick={(e) => togglePersonalityDropdown(e)}
+                        title={activePersonality?.name || 'Selecionar IA'}
                     >
-                        <span className="assistant-name">{activeAssistant}</span>
-                        {sessionId && <span className="session-badge">#{sessionId}</span>}
-                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <div className="personality-icon-indicator">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                                <path d="M12 8V4H8" />
+                                <rect width="16" height="12" x="4" y="8" rx="2" />
+                                <path d="M2 14h2" />
+                                <path d="M20 14h2" />
+                                <path d="M15 13v2" />
+                                <path d="M9 13v2" />
+                            </svg>
+                        </div>
+                        <span className="compact-name">
+                            {getPersonalityInitials(activePersonality?.name || 'IA')}
+                        </span>
+                        {activeSessionId && <span className="session-badge-compact">#{activeSessionId}</span>}
+                        <svg className="chevron-icon" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
                             <path d="M6 9l6 6 6-6" />
                         </svg>
                     </div>
-
-                    {showSessionDropdown && (
-                        <div className="session-dropdown">
-                            <div className="dropdown-header">
-                                <span>Sessões de Hoje</span>
-                                <button onClick={createNewSession} className="new-session-btn" title="Nova Sessão">+</button>
-                            </div>
-                            <div className="dropdown-list">
-                                {sessions.length === 0 ? (
-                                    <div className="empty-sessions">Nenhuma sessão hoje</div>
-                                ) : (
-                                    sessions.map(session => (
-                                        <div
-                                            key={session.id}
-                                            className={`session-item ${sessionId === session.id ? 'active' : ''}`}
-                                            onClick={() => handleSessionClick(session.id)}
-                                        >
-                                            <span className="session-id">#{session.id}</span>
-                                            <span className="session-time">
-                                                {new Date(session.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                                            </span>
-                                            <span className="session-model">{session.modelName}</span>
-                                        </div>
-                                    ))
-                                )}
-                            </div>
-                        </div>
-                    )}
                 </div>
 
                 <div className="hud-divider" />
@@ -164,19 +388,35 @@ export const HUD: React.FC<HUDProps> = ({
                         placeholder="Perguntar..."
                         value={inputValue}
                         onChange={(e) => setInputValue(e.target.value)}
+                        onKeyDown={handleHudInputKeyDown}
                         className="hud-input"
                     />
+                    {inputValue.trim().length > 0 && (
+                        <button
+                            className="hud-send-btn"
+                            onClick={handleHudQuestionSend}
+                            disabled={isSendingQuestion}
+                            title="Enviar"
+                        >
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                                <path d="M22 2L11 13" />
+                                <path d="M22 2l-7 20-4-9-9-4 20-7z" />
+                            </svg>
+                        </button>
+                    )}
                 </div>
 
                 {/* CTA */}
                 <button
-                    className={`hud-cta ${isListening ? 'active' : ''}`}
-                    onClick={onStartListening}
+                    className={`hud-cta ${isSttListening ? 'active' : ''}`}
+                    onClick={handleListeningToggle}
                 >
-                    {isListening ? (
+                    {isSttListening ? (
                         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                            <rect x="6" y="4" width="4" height="16" />
-                            <rect x="14" y="4" width="4" height="16" />
+                            <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
+                            <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
+                            <line x1="12" y1="19" x2="12" y2="23" />
+                            <line x1="8" y1="23" x2="16" y2="23" />
                         </svg>
                     ) : (
                         <>

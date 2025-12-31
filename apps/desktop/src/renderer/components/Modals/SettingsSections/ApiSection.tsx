@@ -1,9 +1,10 @@
 import React from 'react';
 import { CustomSelect } from './CustomSelect';
+import { VoskOfflineSection } from './VoskOfflineSection';
 
 interface ApiSectionProps {
-    apiProvider: 'google' | 'openai' | 'local';
-    setApiProvider: (provider: 'google' | 'openai' | 'local') => void;
+    apiProvider: 'google' | 'openai' | 'local' | 'vosk';
+    setApiProvider: (provider: 'google' | 'openai' | 'local' | 'vosk') => void;
     savedProvider: string | null;
     geminiKey: string;
     openaiKey: string;
@@ -36,9 +37,22 @@ export const ApiSection: React.FC<ApiSectionProps> = ({
     setLiveModel,
     showToast
 }) => {
+    const [isLocalSttActive, setIsLocalSttActive] = React.useState(() => {
+        return localStorage.getItem('ricky:use-local-stt') === 'true';
+    });
+
+    React.useEffect(() => {
+        const handleStorageChange = () => {
+            setIsLocalSttActive(localStorage.getItem('ricky:use-local-stt') === 'true');
+        };
+        window.addEventListener('storage', handleStorageChange);
+        return () => window.removeEventListener('storage', handleStorageChange);
+    }, []);
+
     return (
         <div className="settings-content-inner">
             <div className="content-header">
+                <div className="tabs-container-flex">
                 <div className="provider-tabs">
                     <button
                         className={`provider-tab ${apiProvider === 'google' ? 'active' : ''}`}
@@ -58,11 +72,31 @@ export const ApiSection: React.FC<ApiSectionProps> = ({
                     >
                         Local LLM (Ollama) {savedProvider === 'local' && <span className="check-icon">✓</span>}
                     </button>
+                    </div>
+
+                    <div className="tabs-divider"></div>
+
+                    <div className="provider-tabs">
+                        <button
+                            className={`provider-tab ${apiProvider === 'vosk' ? 'active' : ''}`}
+                            onClick={() => setApiProvider('vosk')}
+                        >
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ marginRight: '6px' }}>
+                                <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
+                                <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
+                                <line x1="12" y1="19" x2="12" y2="23" />
+                                <line x1="8" y1="23" x2="16" y2="23" />
+                            </svg>
+                            Transcrição Local
+                        </button>
+                    </div>
                 </div>
             </div>
 
             <div className="settings-body">
-                {apiProvider === 'local' ? (
+                {apiProvider === 'vosk' ? (
+                    <VoskOfflineSection showToast={showToast} />
+                ) : apiProvider === 'local' ? (
                     <div className="local-llm-placeholder">
                         <div className="placeholder-icon">
                             <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M20 16V8a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2z" /><path d="M9 13v2" /><path d="M15 13v2" /><path d="M12 9v2" /></svg>
@@ -172,38 +206,60 @@ export const ApiSection: React.FC<ApiSectionProps> = ({
                             </button>
                         </div>
 
-                        <div className="input-group">
+                        <div className="models-selection-grid">
+                            <div className="model-selector-card-premium">
+                                <div className="card-header-with-desc">
+                                    <div className="card-title-row">
+                                        <div className="title-icon">
+                                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" /></svg>
+                                        </div>
                             <label>Modelo de Análise</label>
+                                    </div>
+                                    <p className="card-description">Modelo usado para interpretar imagens e manter o contexto das conversas.</p>
+                                </div>
                             <CustomSelect
                                 value={analysisModel}
                                 onChange={(val) => {
                                     setAnalysisModel(val);
                                     showToast(`Modelo de análise alterado para ${val}`);
                                 }}
-                                icon={<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" /></svg>}
                                 options={apiProvider === 'google'
                                     ? ['Gemini 3 Pro', 'Gemini 3 Flash', 'Gemini 2.5 Pro', 'Gemini 2.5 Flash', 'Gemini 2.5 Flash-Lite']
                                     : ['GPT-5.2 Standard', 'GPT-5.2 Mini', 'GPT-4.1 Standard', 'GPT-4o', 'o1']
                                 }
                             />
-                            <span className="input-help">Modelo usado para analisar imagens e conversas</span>
                         </div>
 
-                        <div className="input-group">
+                            <div className={`model-selector-card-premium ${isLocalSttActive ? 'is-disabled' : ''}`}>
+                                <div className="card-header-with-desc">
+                                    <div className="card-title-row">
+                                        <div className="title-icon">
+                                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" /><path d="M19 10v2a7 7 0 0 1-14 0v-2" /></svg>
+                                        </div>
                             <label>Modelo de Transcrição Live</label>
+                                    </div>
+                                    <p className="card-description">Motor de inteligência artificial usado para transformar sua voz em texto em tempo real.</p>
+                                </div>
                             <CustomSelect
-                                value={liveModel}
+                                    value={isLocalSttActive ? 'Usando Transcrição Local' : liveModel}
                                 onChange={(val) => {
+                                        if (!isLocalSttActive) {
                                     setLiveModel(val);
                                     showToast(`Modelo de transcrição alterado para ${val}`);
+                                        }
                                 }}
-                                icon={<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" /><path d="M19 10v2a7 7 0 0 1-14 0v-2" /></svg>}
                                 options={apiProvider === 'google'
                                     ? ['Gemini 2.0 Flash (Live)', 'Gemini 1.5 Flash']
                                     : ['GPT-4o Realtime', 'GPT-4o Mini Realtime', 'Whisper v3']
                                 }
                             />
-                            <span className="input-help">Selecione o modelo usado para transcrição de voz em tempo real</span>
+                                {isLocalSttActive && (
+                                    <div className="local-stt-active-warning">
+                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" /><line x1="12" y1="9" x2="12" y2="13" /><line x1="12" y1="17" x2="12.01" y2="17" /></svg>
+                                        A transcrição local está ativada nas configurações. O modelo online foi desabilitado para economizar recursos.
+                                    </div>
+                                )}
+                            </div>
                         </div>
                     </div>
                 )}

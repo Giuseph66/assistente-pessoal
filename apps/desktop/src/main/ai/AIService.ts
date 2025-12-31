@@ -105,7 +105,7 @@ export class AIService {
       let sessionId = request.sessionId || 0;
       if (sessionId) {
         const existing = this.db.getAISessionById(sessionId);
-        if (!existing || existing.screenshot_id !== request.screenshotId) {
+        if (!existing || existing.screenshotId !== request.screenshotId) {
           sessionId = 0;
         }
       }
@@ -115,9 +115,9 @@ export class AIService {
           sessionId = existingSessions[0].id;
         } else {
           sessionId = this.db.saveAISession({
-            screenshot_id: request.screenshotId,
-            provider_id: this.config.providerId,
-            model_name: this.config.modelName,
+            screenshotId: request.screenshotId,
+            providerId: this.config.providerId,
+            modelName: this.config.modelName,
           });
         }
       }
@@ -242,16 +242,16 @@ export class AIService {
 
       if (sessionId) {
         const existing = this.db.getAISessionById(sessionId);
-        if (!existing || existing.screenshot_id !== null) {
+        if (!existing || existing.screenshotId !== null) {
           sessionId = 0;
         }
       }
 
       if (!sessionId) {
         sessionId = this.db.saveAISession({
-          screenshot_id: null,
-          provider_id: this.config.providerId,
-          model_name: this.config.modelName,
+          screenshotId: null,
+          providerId: this.config.providerId,
+          modelName: this.config.modelName,
         });
       }
 
@@ -505,9 +505,9 @@ export class AIService {
    */
   async createSession(screenshotId: number): Promise<number> {
     return this.db.saveAISession({
-      screenshot_id: screenshotId,
-      provider_id: this.config.providerId,
-      model_name: this.config.modelName,
+      screenshotId,
+      providerId: this.config.providerId,
+      modelName: this.config.modelName,
     });
   }
 

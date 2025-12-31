@@ -244,6 +244,63 @@ app.whenReady().then(async () => {
         overlayManager.createCommandBarWindow();
     });
 
+    // HUD Dropdown handlers
+    ipcMain.handle('hud-dropdown:show', async (event, { x, y, data }: { x: number; y: number; data?: any }) => {
+        const hudWindow = overlayManager.getHUDWindow();
+        if (hudWindow && !hudWindow.isDestroyed()) {
+            const [winX, winY] = hudWindow.getPosition();
+            // Converte coordenadas locais do clique para coordenadas globais da tela
+            overlayManager.showHUDDropdown(winX + x, winY + y, data);
+        } else {
+            // Fallback para o ponto do cursor se a janela do HUD não for encontrada
+            const { screen } = require('electron');
+            const point = screen.getCursorScreenPoint();
+            overlayManager.showHUDDropdown(point.x, point.y, data);
+        }
+        return { success: true };
+    });
+
+    ipcMain.on('hud-dropdown:hide', () => {
+        overlayManager.hideHUDDropdown();
+    });
+
+    ipcMain.handle('hud-dropdown:isVisible', async () => {
+        return { visible: overlayManager.isHUDDropdownVisible() };
+    });
+
+    ipcMain.on('hud:select-personality', (_event, { personalityId }: { personalityId: number }) => {
+        // Notifica o HUD principal sobre a seleção
+        const hudWindow = overlayManager.getHUDWindow();
+        if (hudWindow && !hudWindow.isDestroyed()) {
+            hudWindow.webContents.send('hud:personality-selected', { personalityId });
+        }
+    });
+
+    // Vintage Window Management
+    ipcMain.on('window:vintage-show', (_event, { x, y }: { x: number; y: number }) => {
+        overlayManager.showVintageWindow(x, y);
+    });
+
+    ipcMain.on('window:vintage-move', (_event, { x, y }: { x: number; y: number }) => {
+        overlayManager.moveVintageWindow(x, y);
+    });
+
+    ipcMain.on('window:vintage-hide', () => {
+        overlayManager.hideVintageWindow();
+    });
+
+    ipcMain.on('window:get-pos', (event) => {
+        event.returnValue = overlayManager.getWindowPosition();
+    });
+
+    ipcMain.on('window:minimize-hud', () => {
+        overlayManager.minimizeHUD();
+    });
+
+    ipcMain.on('window:check-hud-over-vintage', () => {
+        overlayManager.checkHUDOverVintage();
+    });
+
     ipcMain.on('window:open-session', () => {
         const window = overlayManager.getWindow();
         if (window && !window.isDestroyed()) {
@@ -254,10 +311,114 @@ app.whenReady().then(async () => {
         }
     });
 
+    // Permissions IPC handlers
+    ipcMain.handle('permissions:checkMicrophone', async () => {
+        try {
+            // Tenta acessar o microfone para verificar permissão
+            // No Linux, isso geralmente funciona se o usuário já concedeu permissão antes
+            // ou se o sistema não requer permissão explícita
+            const { systemPreferences } = require('electron');
+            if (systemPreferences && systemPreferences.getMediaAccessStatus) {
+                const status = systemPreferences.getMediaAccessStatus('microphone');
+                return { 
+                    granted: status === 'granted',
+                    status: status || 'unknown'
+                };
+            }
+            // Fallback: assumir que está disponível se não houver API de verificação
+            return { granted: true, status: 'not-checked' };
+        } catch (error: any) {
+            logger.warn({ err: error }, 'Failed to check microphone permission');
+            return { granted: false, status: 'error', error: error?.message };
+        }
+    });
+
+    ipcMain.handle('permissions:requestMicrophone', async () => {
+        try {
+            const { systemPreferences } = require('electron');
+            if (systemPreferences && systemPreferences.askForMediaAccess) {
+                const granted = await systemPreferences.askForMediaAccess('microphone');
+                return { granted, status: granted ? 'granted' : 'denied' };
+            }
+            // Se não houver API de solicitação, retornar como disponível
+            return { granted: true, status: 'not-required' };
+        } catch (error: any) {
+            logger.error({ err: error }, 'Failed to request microphone permission');
+            return { granted: false, status: 'error', error: error?.message };
+        }
+    });
+
+    ipcMain.handle('permissions:openSystemSettings', async () => {
+        try {
+            const platform = process.platform;
+            
+            if (platform === 'linux') {
+                // Tenta abrir configurações de privacidade/permissões no Linux
+                // Diferentes distribuições têm diferentes ferramentas
+                const commands = [
+                    { cmd: 'gnome-control-center', args: ['privacy'] },  // GNOME - abre diretamente privacidade
+                    { cmd: 'gnome-control-center', args: [] },           // GNOME - abre painel geral
+                    { cmd: 'systemsettings', args: [] },                  // KDE Plasma
+                    { cmd: 'kcmshell5', args: ['privacy'] },             // KDE - módulo de privacidade
+                    { cmd: 'xfce4-settings-manager', args: [] },         // XFCE
+                    { cmd: 'gnome-settings', args: [] },                 // GNOME alternativo
+                ];
+                
+                // Tenta executar o primeiro comando disponível
+                const { exec } = require('child_process');
+                const { promisify } = require('util');
+                const execAsync = promisify(exec);
+                
+                for (const { cmd, args } of commands) {
+                    try {
+                        await execAsync(`which ${cmd}`);
+                        const child = spawn(cmd, args, { detached: true, stdio: 'ignore' });
+                        child.unref(); // Permite que o processo pai termine sem esperar
+                        logger.info({ command: cmd, args }, 'Opened system settings');
+                        return { success: true, command: cmd };
+                    } catch {
+                        continue;
+                    }
+                }
+                
+                // Fallback: tenta abrir via xdg-open (padrão Linux)
+                try {
+                    spawn('xdg-open', ['settings://privacy'], { detached: true, stdio: 'ignore' }).unref();
+                    return { success: true, command: 'xdg-open' };
+                } catch {
+                    // Último fallback: abre o gerenciador de arquivos na pasta home
+                    shell.openPath(app.getPath('home'));
+                    return { success: true, command: 'fallback' };
+                }
+            } else if (platform === 'darwin') {
+                // macOS - abre diretamente nas configurações de privacidade do microfone
+                shell.openExternal('x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone');
+                return { success: true };
+            } else if (platform === 'win32') {
+                // Windows - abre diretamente nas configurações de privacidade do microfone
+                shell.openExternal('ms-settings:privacy-microphone');
+                return { success: true };
+            }
+            
+            return { success: false, error: 'Unsupported platform' };
+        } catch (error: any) {
+            logger.error({ err: error }, 'Failed to open system settings');
+            return { success: false, error: error?.message };
+        }
+    });
+
     ipcMain.on('window:minimize', (event) => {
         if (event.sender.isDestroyed()) return;
         const win = BrowserWindow.fromWebContents(event.sender);
         win?.minimize();
+    });
+
+    ipcMain.on('window:minimize-all', () => {
+        BrowserWindow.getAllWindows().forEach((win) => {
+            if (!win.isDestroyed()) {
+                win.minimize();
+            }
+        });
     });
 
     ipcMain.on('window:maximize', (event) => {
@@ -398,7 +559,26 @@ app.whenReady().then(async () => {
 
     ipcMain.handle('screenshot:captureFullscreen', async () => {
         logger.info('IPC screenshot:captureFullscreen received');
-        return runFullscreenCapture();
+        const result = await runFullscreenCapture();
+        if (result.success) {
+            const screenshots = db.getScreenshots(1);
+            if (screenshots.length > 0) {
+                return { ...result, screenshotId: screenshots[0].id };
+            }
+        }
+        return result;
+    });
+
+    ipcMain.handle('screenshot:capture-area-interactive', async () => {
+        logger.info('IPC screenshot:capture-area-interactive received');
+        const result = await runInteractiveCapture();
+        if (result.success) {
+            const screenshots = db.getScreenshots(1);
+            if (screenshots.length > 0) {
+                return { ...result, screenshotId: screenshots[0].id };
+            }
+        }
+        return result;
     });
 
     // Register global hotkeys

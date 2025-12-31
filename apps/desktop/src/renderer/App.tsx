@@ -3,7 +3,9 @@ import { OverlayContainer } from './components/Overlay/OverlayContainer';
 import { SettingsModal } from './components/Modals/SettingsModal';
 import { HistoryModal } from './components/Modals/HistoryModal';
 import { HUD } from './components/HUD/HUD';
+import { HUDDropdown } from './components/HUD/HUDDropdown';
 import { CommandBar } from './components/CommandBar/CommandBar';
+import { VintageWindow } from './components/HUD/VintageWindow';
 import { initSttStore } from './store/sttStore';
 import './styles/global.css';
 
@@ -51,6 +53,16 @@ function App(): JSX.Element {
         );
     }
 
+    if (route === '#hud-dropdown') {
+        return <HUDDropdown
+            personalities={[]}
+            sessions={[]}
+            onPersonalitySelect={() => {}}
+            onSessionSelect={() => {}}
+            onCreateSession={() => {}}
+        />;
+    }
+
     if (route === '#command-bar') {
         return (
             <CommandBar
@@ -59,6 +71,10 @@ function App(): JSX.Element {
                 onCommand={(cmd) => window.electron.ipcRenderer.send('session:command', cmd)}
             />
         );
+    }
+
+    if (route === '#vintage-window') {
+        return <VintageWindow visible={true} />;
     }
 
     // Default to OverlayContainer (Main Session Window)

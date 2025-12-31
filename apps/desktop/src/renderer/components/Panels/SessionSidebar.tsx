@@ -25,6 +25,7 @@ export const SessionSidebar: React.FC<SessionSidebarProps> = ({ isOpen, sessionI
     return (
         <div className="session-container">
             {/* Navigation Strip */}
+                {/*
             <div className="nav-strip">
                 <button
                     className={`nav-pill ${activeTab === 'chat' ? 'active' : ''}`}
@@ -39,6 +40,7 @@ export const SessionSidebar: React.FC<SessionSidebarProps> = ({ isOpen, sessionI
                     📝 Transcrição
                 </button>
             </div>
+                */}
 
             {/* Content Area */}
             <div className="content-area">

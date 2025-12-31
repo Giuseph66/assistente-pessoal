@@ -16,6 +16,7 @@ const broadcast = (channel: string, payload: any) => {
 
 export function registerSessionIpc(db: DatabaseManager): void {
     let currentTranscriptionSessionId: number | null = null;
+    let activeChatSessionId: number | null = null;
 
     // --- Transcription Sessions (Legacy/Audio only) ---
 
@@ -111,6 +112,11 @@ export function registerSessionIpc(db: DatabaseManager): void {
     });
 
     ipcMain.on('session:activate', (_event, sessionId: number) => {
+        activeChatSessionId = sessionId;
         broadcast('session:activated', { sessionId });
+    });
+
+    ipcMain.handle('session:getActive', async () => {
+        return { sessionId: activeChatSessionId };
     });
 }

@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { useSttState } from '../store/sttStore';
 import { setSttMicAnalyser } from '../store/sttMicStore';
+import { getFeaturePermission } from '../utils/featurePermissions';
 
 const DEFAULT_SAMPLE_RATE = 16000;
 
@@ -63,6 +64,11 @@ export function SttMicBridge(): null {
     if (streamRef.current) return;
     try {
       if (!window.stt || typeof window.stt.sendAudio !== 'function') return;
+      if (!getFeaturePermission('microphone')) {
+        // permissão negada dentro do app
+        setSttMicAnalyser(null);
+        return;
+      }
       const config = await window.stt.getConfig().catch(() => null);
       const targetRate =
         config?.sampleRate && Number.isFinite(config.sampleRate) && config.sampleRate > 0

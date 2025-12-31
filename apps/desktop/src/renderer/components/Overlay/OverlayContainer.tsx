@@ -105,6 +105,16 @@ export function OverlayContainer(): JSX.Element {
     };
     // Use type assertion for window.electron if needed or ensure types are correct
     (window as any).electron.ipcRenderer.on('session:activated', handleSessionActivated);
+    (async () => {
+      try {
+        const result = await (window as any).electron.ipcRenderer.invoke('session:getActive');
+        if (typeof result?.sessionId === 'number') {
+          setActiveSessionId(result.sessionId);
+        }
+      } catch {
+        // ignore
+      }
+    })();
     return () => {
       (window as any).electron.ipcRenderer.removeListener('session:activated', handleSessionActivated);
     };

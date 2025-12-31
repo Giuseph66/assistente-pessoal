@@ -6,9 +6,11 @@ import { PermissionsSection } from './SettingsSections/PermissionsSection';
 import { FeaturesSection } from './SettingsSections/FeaturesSection';
 import { PrivacySection } from './SettingsSections/PrivacySection';
 import { ShortcutsSection } from './SettingsSections/ShortcutsSection';
-import { ProfileSection } from './SettingsSections/ProfileSection';
+import { AIPromptsSection } from './SettingsSections/AIPromptsSection';
+import { DashboardSection } from './SettingsSections/DashboardSection';
 import { HelpSection } from './SettingsSections/HelpSection';
 import './SettingsModal.css';
+import { getFeaturePermission } from '../../utils/featurePermissions';
 
 interface SettingsModalProps {
     isOpen: boolean;
@@ -22,15 +24,15 @@ type SettingsSection =
     | 'features'
     | 'shortcuts'
     | 'privacy'
-    | 'profile'
-    | 'premium'
+    | 'ai-prompts'
+    | 'dashboard'
     | 'help';
 
 
 export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
     const [activeSection, setActiveSection] = useState<SettingsSection>('api');
     const [performance, setPerformance] = useState('personalizado');
-    const [apiProvider, setApiProvider] = useState<'google' | 'openai' | 'local'>('google');
+    const [apiProvider, setApiProvider] = useState<'google' | 'openai' | 'local' | 'vosk'>('google');
     const [toast, setToast] = useState<string | null>(null);
 
     // Model selection states
@@ -151,6 +153,11 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
         if (isOpen && activeSection === 'audio') {
             const startLocalMic = async () => {
                 try {
+                    // Respeita permissão interna do app
+                    if (!getFeaturePermission('microphone')) {
+                        setToast('Permissão do microfone está negada no app');
+                        return;
+                    }
                     const mic = micDevices.find((d: { label: string }) => d.label === selectedMic);
                     const constraints = mic ? { audio: { deviceId: { exact: mic.id } } } : { audio: true };
                     const stream = await navigator.mediaDevices.getUserMedia(constraints);
@@ -202,12 +209,12 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
         const startPreview = async () => {
             try {
                 if (!isMounted) return;
-                
+
                 let source = systemAudioSources.find((s: { name: string; id: string }) => s.name === selectedSystemAudio);
                 if (selectedSystemAudio === 'Padrão') {
                     source = systemAudioSources.find((s: any) => s.isDefaultCandidate) || systemAudioSources[0];
                 }
-                
+
                 if (!source?.id) {
                     console.warn('No system audio source selected');
                     return;
@@ -297,8 +304,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
                 return <PrivacySection />;
             case 'shortcuts':
                 return <ShortcutsSection />;
-            case 'profile':
-                return <ProfileSection />;
+            case 'ai-prompts':
+                return <AIPromptsSection showToast={showToast} />;
+            case 'dashboard':
+                return <DashboardSection />;
         }
     };
 
@@ -351,9 +360,13 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
                             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" /></svg>
                             Privacidade
                         </button>
-                        <button className={`sidebar-item ${activeSection === 'profile' ? 'active' : ''}`} onClick={() => setActiveSection('profile')}>
-                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" /></svg>
-                            Perfil
+                        <button className={`sidebar-item ${activeSection === 'ai-prompts' ? 'active' : ''}`} onClick={() => setActiveSection('ai-prompts')}>
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" /></svg>
+                            Personalidades IA
+                        </button>
+                        <button className={`sidebar-item ${activeSection === 'dashboard' ? 'active' : ''}`} onClick={() => setActiveSection('dashboard')}>
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2" /><line x1="3" y1="9" x2="21" y2="9" /><line x1="9" y1="21" x2="9" y2="9" /></svg>
+                            Dashboard
                         </button>{/*
                             <button className={`sidebar-item ${activeSection === 'premium' ? 'active' : ''}`} onClick={() => setActiveSection('premium')}>
                             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" /></svg>

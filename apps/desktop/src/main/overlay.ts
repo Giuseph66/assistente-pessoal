@@ -410,10 +410,27 @@ export class OverlayManager {
   }
 
   /**
+   * Obtém a janela HUD
+   */
+  getHUDWindow(): BrowserWindow | null {
+    return this.hudWindow;
+  }
+
+  /**
+   * Obtém a posição da janela ativa ou HUD
+   */
+  getWindowPosition(): number[] {
+    if (this.hudWindow && !this.hudWindow.isDestroyed()) {
+      return this.hudWindow.getPosition();
+    }
+    return [0, 0];
+  }
+
+  /**
    * Verifica se o overlay está visível
    */
   isOverlayVisible(): boolean {
-    return this.isVisible && this.overlayWindow && !this.overlayWindow.isDestroyed() && this.overlayWindow.isVisible() === true;
+    return Boolean(this.isVisible && this.overlayWindow && !this.overlayWindow.isDestroyed() && this.overlayWindow.isVisible());
   }
 
   /**
@@ -515,6 +532,8 @@ export class OverlayManager {
   private settingsWindow: BrowserWindow | null = null;
   private historyWindow: BrowserWindow | null = null;
   private commandBarWindow: BrowserWindow | null = null;
+  private hudDropdownWindow: BrowserWindow | null = null;
+  private vintageWindow: BrowserWindow | null = null;
 
   /**
    * Cria a janela HUD (Persistent Bottom Bar)
@@ -522,20 +541,55 @@ export class OverlayManager {
   createHUDWindow(): void {
     if (this.hudWindow) return;
 
-    const { width } = screen.getPrimaryDisplay().workAreaSize;
-
+    const primaryDisplay = screen.getPrimaryDisplay();
+    const { width, height: screenHeight } = primaryDisplay.workAreaSize;
+    const windowWidth = 750;
+    const yPosition = primaryDisplay.bounds.height - (primaryDisplay.bounds.height * 0.15);
+    // Log detalhado das informações do display
+    logger.info({
+      display: {
+        id: primaryDisplay.id,
+        bounds: {
+          x: primaryDisplay.bounds.x,
+          y: primaryDisplay.bounds.y,
+          width: primaryDisplay.bounds.width,
+          height: primaryDisplay.bounds.height
+        },
+        workArea: {
+          x: primaryDisplay.workArea.x,
+          y: primaryDisplay.workArea.y,
+          width: primaryDisplay.workArea.width,
+          height: primaryDisplay.workArea.height
+        },
+        scaleFactor: primaryDisplay.scaleFactor,
+        size: {
+          width: primaryDisplay.size.width,
+          height: primaryDisplay.size.height
+        }
+      },
+      hudWindow: {
+        windowWidth,
+        windowHeight: 52,
+        calculatedY: yPosition,
+      },
+      allDisplays: screen.getAllDisplays().map(d => ({
+        id: d.id,
+        bounds: d.bounds,
+        workArea: d.workArea,
+        scaleFactor: d.scaleFactor
+      }))
+    }, 'Display information and HUD window positioning');
     this.hudWindow = new BrowserWindow({
-      width: 800,
-      height: 120,
-      x: (width - 800) / 2,
-      y: screen.getPrimaryDisplay().workAreaSize.height - 140,
+      width: windowWidth,
+      height: 52,
+      x: (width - windowWidth) / 2, // Centralizado horizontalmente
+      y: yPosition, // 20% de margem do fundo
       frame: false,
       transparent: true,
       alwaysOnTop: true,
       resizable: false,
       movable: true,
       skipTaskbar: true,
-      center: true,
       webPreferences: {
         preload: join(__dirname, '../preload/index.js'),
         nodeIntegration: false,
@@ -550,7 +604,78 @@ export class OverlayManager {
       this.hudWindow.loadFile(join(__dirname, '../renderer/index.html'), { hash: 'hud' });
     }
 
-    this.hudWindow.on('closed', () => { this.hudWindow = null; });
+    // Detecta quando o HUD está sendo arrastado para mostrar a janela vintage
+    let isDraggingHUD = false;
+    let dragTimeout: NodeJS.Timeout | null = null;
+
+    this.hudWindow.on('will-move', () => {
+      if (!isDraggingHUD) {
+        isDraggingHUD = true;
+        logger.debug('HUD: drag iniciado (will-move)');
+      }
+      
+      // Limpa timeout anterior se existir
+      if (dragTimeout) {
+        clearTimeout(dragTimeout);
+        dragTimeout = null;
+      }
+    });
+
+    this.hudWindow.on('moved', () => {
+      if (isDraggingHUD && this.hudWindow && !this.hudWindow.isDestroyed()) {
+        const bounds = this.hudWindow.getBounds();
+        const screenWidth = screen.getPrimaryDisplay().workAreaSize.width;
+        
+        // Lógica de posicionamento inteligente
+        const spaceOnRight = screenWidth - (bounds.x + bounds.width);
+        const spaceOnLeft = bounds.x;
+        
+        let vintageX = bounds.x + bounds.width + 20;
+        
+        if (spaceOnRight < 260 && spaceOnLeft > 260) {
+          vintageX = bounds.x - 260;
+        }
+        
+        const vintageY = bounds.y - 100;
+        
+        logger.debug({ vintageX, vintageY, hudBounds: bounds }, 'HUD: movido, atualizando janela vintage');
+        
+        // Mostra ou move a janela vintage
+        if (!this.vintageWindow || this.vintageWindow.isDestroyed()) {
+          this.showVintageWindow(vintageX, vintageY);
+        } else {
+          this.moveVintageWindow(vintageX, vintageY);
+        }
+        
+        // Detecta quando o drag termina (janela para de se mover por 200ms)
+        if (dragTimeout) {
+          clearTimeout(dragTimeout);
+        }
+        dragTimeout = setTimeout(() => {
+          if (isDraggingHUD) {
+            logger.debug('HUD: drag terminado');
+            isDraggingHUD = false;
+            
+            // Verifica se estava sobre a janela vintage para minimizar
+            const wasOverVintage = this.checkHUDOverVintageSync();
+            if (wasOverVintage) {
+              logger.info('HUD: estava sobre janela vintage, minimizando');
+              this.minimizeHUD();
+            }
+            
+            // Esconde a janela vintage após um pequeno delay
+            setTimeout(() => {
+              this.hideVintageWindow();
+            }, 100);
+          }
+        }, 200);
+      }
+    });
+
+    this.hudWindow.on('closed', () => { 
+      isDraggingHUD = false;
+      this.hudWindow = null; 
+    });
   }
 
   /**
@@ -670,6 +795,111 @@ export class OverlayManager {
   }
 
   /**
+   * Cria a janela flutuante do dropdown do HUD
+   */
+  createHUDDropdownWindow(): void {
+    if (this.hudDropdownWindow && !this.hudDropdownWindow.isDestroyed()) {
+      return;
+    }
+
+    this.hudDropdownWindow = new BrowserWindow({
+      width: 300,
+      height: 400,
+      frame: false,
+      transparent: true,
+      alwaysOnTop: true,
+      resizable: false,
+      movable: false,
+      skipTaskbar: true,
+      focusable: true,
+      hasShadow: false,
+      webPreferences: {
+        preload: join(__dirname, '../preload/index.js'),
+        nodeIntegration: false,
+        contextIsolation: true,
+        sandbox: false,
+      },
+      show: false, // Não mostrar até posicionar
+    });
+
+    if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
+      this.hudDropdownWindow.loadURL(`${process.env['ELECTRON_RENDERER_URL']}#hud-dropdown`);
+    } else {
+      this.hudDropdownWindow.loadFile(join(__dirname, '../renderer/index.html'), { hash: 'hud-dropdown' });
+    }
+
+    // Fecha ao perder foco ou clicar fora
+    this.hudDropdownWindow.on('blur', () => {
+      this.hideHUDDropdown();
+      // Notifica o HUD principal que o dropdown foi fechado
+      const hudWin = this.getHUDWindow();
+      if (hudWin && !hudWin.isDestroyed()) {
+        hudWin.webContents.send('hud-dropdown:closed');
+      }
+    });
+
+    this.hudDropdownWindow.on('closed', () => {
+      this.hudDropdownWindow = null;
+    });
+
+    // Previne fechar ao clicar na própria janela
+    this.hudDropdownWindow.setIgnoreMouseEvents(false, { forward: true });
+  }
+
+  /**
+   * Mostra o dropdown do HUD na posição especificada
+   */
+  showHUDDropdown(x: number, y: number, data?: any): void {
+    if (!this.hudDropdownWindow || this.hudDropdownWindow.isDestroyed()) {
+      this.createHUDDropdownWindow();
+    }
+
+    if (!this.hudDropdownWindow) return;
+    // nao mudar essas constantes(margin, finalX, finalY, dropdownHeight, dropdownWidth)
+    const dropdownHeight = 300;
+    const dropdownWidth = 300;
+    const margin = 50; 
+    const finalX = x - (dropdownWidth * 0.15); 
+    const finalY = y - dropdownHeight - margin;
+
+    // Garante que não saia da tela
+    const primaryDisplay = screen.getPrimaryDisplay();
+    const workArea = primaryDisplay.workArea;
+    
+    const clampedX = Math.max(workArea.x, Math.min(finalX, workArea.x + workArea.width - dropdownWidth));
+    const clampedY = Math.max(workArea.y, Math.min(finalY, workArea.y + workArea.height - dropdownHeight));
+
+    this.hudDropdownWindow.setPosition(Math.round(clampedX), Math.round(clampedY));
+    this.hudDropdownWindow.setSize(dropdownWidth, dropdownHeight);
+
+    // Envia dados para a janela
+    if (data) {
+      this.hudDropdownWindow.webContents.once('did-finish-load', () => {
+        this.hudDropdownWindow?.webContents.send('hud-dropdown:data', data);
+      });
+    }
+
+    this.hudDropdownWindow.show();
+    this.hudDropdownWindow.focus();
+  }
+
+  /**
+   * Esconde o dropdown do HUD
+   */
+  hideHUDDropdown(): void {
+    if (this.hudDropdownWindow && !this.hudDropdownWindow.isDestroyed()) {
+      this.hudDropdownWindow.hide();
+    }
+  }
+
+  /**
+   * Verifica se o dropdown está visível
+   */
+  isHUDDropdownVisible(): boolean {
+    return Boolean(this.hudDropdownWindow && !this.hudDropdownWindow.isDestroyed() && this.hudDropdownWindow.isVisible());
+  }
+
+  /**
    * Fecha todas as janelas
    */
   destroy(): void {
@@ -688,6 +918,182 @@ export class OverlayManager {
     if (this.settingsWindow) this.settingsWindow.destroy();
     if (this.historyWindow) this.historyWindow.destroy();
     if (this.commandBarWindow) this.commandBarWindow.destroy();
+    if (this.hudDropdownWindow) this.hudDropdownWindow.destroy();
+    if (this.vintageWindow) this.vintageWindow.destroy();
+  }
+
+  /**
+   * Cria a janela Vintage decorativa
+   */
+  createVintageWindow(): void {
+    if (this.vintageWindow && !this.vintageWindow.isDestroyed()) {
+      logger.debug('Vintage window: already exists, skipping creation');
+      return;
+    }
+
+    logger.info('Vintage window: creating new window');
+    this.vintageWindow = new BrowserWindow({
+      width: 240,
+      height: 320,
+      frame: false,
+      transparent: true,
+      alwaysOnTop: true,
+      skipTaskbar: true,
+      resizable: false,
+      movable: false,
+      focusable: false,
+      hasShadow: false,
+      webPreferences: {
+        preload: join(__dirname, '../preload/index.js'),
+        nodeIntegration: false,
+        contextIsolation: true,
+        sandbox: false,
+      },
+      show: false,
+    });
+
+    if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
+      this.vintageWindow.loadURL(`${process.env['ELECTRON_RENDERER_URL']}#vintage-window`);
+    } else {
+      this.vintageWindow.loadFile(join(__dirname, '../renderer/index.html'), { hash: 'vintage-window' });
+    }
+
+    this.vintageWindow.setIgnoreMouseEvents(true);
+
+    this.vintageWindow.on('closed', () => {
+      logger.debug('Vintage window: closed');
+      this.vintageWindow = null;
+    });
+
+    this.vintageWindow.webContents.on('did-finish-load', () => {
+      logger.debug('Vintage window: content loaded');
+    });
+
+    logger.info('Vintage window: created successfully');
+  }
+
+  /**
+   * Mostra a janela vintage na posição especificada
+   */
+  showVintageWindow(x: number, y: number): void {
+    logger.info({ x, y }, 'Vintage window: show requested');
+    if (!this.vintageWindow || this.vintageWindow.isDestroyed()) {
+      logger.debug('Vintage window: creating new window');
+      this.createVintageWindow();
+    }
+
+    if (this.vintageWindow) {
+      const finalX = Math.round(x);
+      const finalY = Math.round(y);
+      this.vintageWindow.setPosition(finalX, finalY);
+      this.vintageWindow.showInactive(); // show sem roubar foco
+      logger.info({ x: finalX, y: finalY }, 'Vintage window: shown at position');
+    } else {
+      logger.warn('Vintage window: failed to create/show window');
+    }
+  }
+
+  /**
+   * Move a janela vintage
+   */
+  moveVintageWindow(x: number, y: number): void {
+    if (this.vintageWindow && !this.vintageWindow.isDestroyed()) {
+      this.vintageWindow.setPosition(Math.round(x), Math.round(y));
+      
+      // Detecção de colisão com o mouse
+      const mousePos = screen.getCursorScreenPoint();
+      this.updateVintageCollision(mousePos.x, mousePos.y);
+      
+      // Verifica se o HUD está sobre a janela vintage (drop zone)
+      this.checkHUDOverVintage();
+    }
+  }
+
+  /**
+   * Oculta a janela vintage
+   */
+  hideVintageWindow(): void {
+    if (this.vintageWindow && !this.vintageWindow.isDestroyed()) {
+      this.vintageWindow.hide();
+    }
+  }
+
+  /**
+   * Atualiza o estado de colisão da janela vintage
+   */
+  private updateVintageCollision(mouseX: number, mouseY: number): void {
+    if (!this.vintageWindow || this.vintageWindow.isDestroyed()) return;
+
+    const bounds = this.vintageWindow.getBounds();
+    const margin = 20;
+
+    const isColliding = (
+      mouseX >= bounds.x - margin &&
+      mouseX <= bounds.x + bounds.width + margin &&
+      mouseY >= bounds.y - margin &&
+      mouseY <= bounds.y + bounds.height + margin
+    );
+
+    this.vintageWindow.webContents.send('vintage:collision-state', isColliding);
+  }
+
+  /**
+   * Verifica se o HUD está sobre a janela vintage (drop zone)
+   */
+  checkHUDOverVintage(): void {
+    if (!this.vintageWindow || this.vintageWindow.isDestroyed() || !this.hudWindow || this.hudWindow.isDestroyed()) {
+      return;
+    }
+
+    const vintageBounds = this.vintageWindow.getBounds();
+    const hudBounds = this.hudWindow.getBounds();
+
+    // Verifica sobreposição entre HUD e janela vintage
+    const isOverlapping = !(
+      hudBounds.x + hudBounds.width < vintageBounds.x ||
+      hudBounds.x > vintageBounds.x + vintageBounds.width ||
+      hudBounds.y + hudBounds.height < vintageBounds.y ||
+      hudBounds.y > vintageBounds.y + vintageBounds.height
+    );
+
+    // Envia estado para o renderer da janela vintage (feedback visual)
+    this.vintageWindow.webContents.send('vintage:drop-zone-active', isOverlapping);
+    
+    // Envia estado para o HUD (para minimizar ao soltar)
+    if (this.hudWindow && !this.hudWindow.isDestroyed()) {
+      this.hudWindow.webContents.send('vintage:drop-zone-active', isOverlapping);
+    }
+  }
+
+  /**
+   * Verifica síncronamente se o HUD está sobre a janela vintage (retorna boolean)
+   */
+  private checkHUDOverVintageSync(): boolean {
+    if (!this.vintageWindow || this.vintageWindow.isDestroyed() || !this.hudWindow || this.hudWindow.isDestroyed()) {
+      return false;
+    }
+
+    const vintageBounds = this.vintageWindow.getBounds();
+    const hudBounds = this.hudWindow.getBounds();
+
+    // Verifica sobreposição entre HUD e janela vintage
+    const isOverlapping = !(
+      hudBounds.x + hudBounds.width < vintageBounds.x ||
+      hudBounds.x > vintageBounds.x + vintageBounds.width ||
+      hudBounds.y + hudBounds.height < vintageBounds.y ||
+      hudBounds.y > vintageBounds.y + vintageBounds.height
+    );
+
+    return isOverlapping;
+  }
+
+  /**
+   * Minimiza a janela HUD
+   */
+  minimizeHUD(): void {
+    if (this.hudWindow && !this.hudWindow.isDestroyed()) {
+      this.hudWindow.minimize();
+    }
   }
 }
 
