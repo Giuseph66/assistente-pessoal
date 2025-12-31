@@ -17,7 +17,7 @@ export class OverlayManager {
   private isLinux: boolean = process.platform === 'linux';
   private translationWindow: BrowserWindow | null = null;
   private translationApplyTimer: NodeJS.Timeout | null = null;
-  
+
   /**
    * Verifica se a plataforma suporta content protection nativo
    * setContentProtection só funciona no Windows e macOS
@@ -114,16 +114,17 @@ export class OverlayManager {
     const contentProtection = (overlayConfig as any).contentProtection !== false; // Default: true
 
     this.overlayWindow = new BrowserWindow({
-      width: size.width,
-      height: size.height,
+      width: size.width || 1200,
+      height: size.height || 800,
       x: position.x,
       y: position.y,
       frame: false,
       transparent: true,
       alwaysOnTop: alwaysOnTop,
       skipTaskbar: true,
-      resizable: false,
+      resizable: true,
       movable: true,
+      center: true,
       focusable: true,
       hasShadow: false,
       webPreferences: {
@@ -156,10 +157,10 @@ export class OverlayManager {
     // Usa once() para evitar múltiplas execuções e verifica estado interno antes de aplicar
     this.overlayWindow.once('ready-to-show', () => {
       // Usa estado interno se disponível, senão usa config
-      const shouldProtect = this.currentContentProtection !== null 
-        ? this.currentContentProtection 
+      const shouldProtect = this.currentContentProtection !== null
+        ? this.currentContentProtection
         : (contentProtection !== false);
-      
+
       // Aplica content protection (que já verifica plataforma internamente)
       this.setContentProtection(shouldProtect);
     });
@@ -245,12 +246,12 @@ export class OverlayManager {
     if (!this.overlayWindow.isVisible()) {
       this.overlayWindow.show();
       this.isVisible = true;
-      
+
       // Se solicitado, também habilita content protection
       if (enableContentProtection) {
         this.setContentProtection(true); // Usa método que já verifica plataforma
       }
-      
+
       logger.debug('Overlay shown');
     }
   }
@@ -263,12 +264,12 @@ export class OverlayManager {
     if (this.overlayWindow && this.overlayWindow.isVisible()) {
       this.overlayWindow.hide();
       this.isVisible = false;
-      
+
       // Se solicitado, também desabilita content protection para garantir que não apareça
       if (disableContentProtection) {
         this.setContentProtection(false); // Usa método que já verifica plataforma
       }
-      
+
       logger.debug('Overlay hidden');
     }
   }
@@ -320,16 +321,16 @@ export class OverlayManager {
    */
   private applyLinuxWorkarounds(enabled: boolean): void {
     if (!this.isLinux || !this.overlayWindow) return;
-    
+
     // Workarounds já aplicados na criação da janela:
     // - skipTaskbar: true ✓
     // - alwaysOnTop: true ✓
     // - frameless: true ✓
     // - transparent: true ✓
-    
+
     // Nota: Electron não expõe diretamente override_redirect ou WM hints avançados
     // As propriedades básicas já estão configuradas para tornar a janela discreta
-    
+
     if (enabled) {
       logger.debug('Linux workarounds active (skipTaskbar, alwaysOnTop, frameless already set)');
       logger.warn('Content protection is limited on Linux - app may still appear in screen sharing. Consider sharing specific windows instead of entire screen.');
@@ -490,8 +491,8 @@ export class OverlayManager {
 
       this.overlayWindow.focus();
 
-      logger.info({ 
-        from: currentDisplay.id, 
+      logger.info({
+        from: currentDisplay.id,
         to: nextDisplay.id,
         newPosition: { x: newX, y: newY }
       }, 'Overlay moved to next monitor');
@@ -503,8 +504,166 @@ export class OverlayManager {
     }
   }
 
+  private hudWindow: BrowserWindow | null = null;
+  private settingsWindow: BrowserWindow | null = null;
+  private historyWindow: BrowserWindow | null = null;
+  private commandBarWindow: BrowserWindow | null = null;
+
   /**
-   * Fecha a janela overlay
+   * Cria a janela HUD (Persistent Bottom Bar)
+   */
+  createHUDWindow(): void {
+    if (this.hudWindow) return;
+
+    const { width } = screen.getPrimaryDisplay().workAreaSize;
+
+    this.hudWindow = new BrowserWindow({
+      width: 800,
+      height: 120,
+      x: (width - 800) / 2,
+      y: screen.getPrimaryDisplay().workAreaSize.height - 140,
+      frame: false,
+      transparent: true,
+      alwaysOnTop: true,
+      resizable: false,
+      movable: true,
+      skipTaskbar: true,
+      center: true,
+      webPreferences: {
+        preload: join(__dirname, '../preload/index.js'),
+        nodeIntegration: false,
+        contextIsolation: true,
+        sandbox: false,
+      }
+    });
+
+    if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
+      this.hudWindow.loadURL(`${process.env['ELECTRON_RENDERER_URL']}#hud`);
+    } else {
+      this.hudWindow.loadFile(join(__dirname, '../renderer/index.html'), { hash: 'hud' });
+    }
+
+    this.hudWindow.on('closed', () => { this.hudWindow = null; });
+  }
+
+  /**
+   * Cria a janela de Configurações
+   */
+  createSettingsWindow(): void {
+    if (this.settingsWindow) {
+      this.settingsWindow.show();
+      this.settingsWindow.focus();
+      return;
+    }
+
+    this.settingsWindow = new BrowserWindow({
+      width: 900,
+      height: 700,
+      frame: true, // Standard window frame
+      transparent: false,
+      backgroundColor: '#1a1a1a',
+      webPreferences: {
+        preload: join(__dirname, '../preload/index.js'),
+        nodeIntegration: false,
+        contextIsolation: true,
+        sandbox: false,
+      }
+    });
+
+    // Remove menu bar
+    this.settingsWindow.setMenuBarVisibility(false);
+
+    if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
+      this.settingsWindow.loadURL(`${process.env['ELECTRON_RENDERER_URL']}#settings`);
+    } else {
+      this.settingsWindow.loadFile(join(__dirname, '../renderer/index.html'), { hash: 'settings' });
+    }
+
+    this.settingsWindow.on('closed', () => { this.settingsWindow = null; });
+  }
+
+  /**
+   * Cria a janela de Histórico
+   */
+  createHistoryWindow(): void {
+    if (this.historyWindow) {
+      this.historyWindow.show();
+      this.historyWindow.focus();
+      return;
+    }
+
+    this.historyWindow = new BrowserWindow({
+      width: 1000,
+      height: 800,
+      frame: true,
+      transparent: false,
+      backgroundColor: '#1a1a1a',
+      webPreferences: {
+        preload: join(__dirname, '../preload/index.js'),
+        nodeIntegration: false,
+        contextIsolation: true,
+        sandbox: false,
+      }
+    });
+
+    this.historyWindow.setMenuBarVisibility(false);
+
+    if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
+      this.historyWindow.loadURL(`${process.env['ELECTRON_RENDERER_URL']}#history`);
+    } else {
+      this.historyWindow.loadFile(join(__dirname, '../renderer/index.html'), { hash: 'history' });
+    }
+
+    this.historyWindow.on('closed', () => { this.historyWindow = null; });
+  }
+
+  /**
+   * Cria a janela Command Bar (Spotlight style)
+   */
+  createCommandBarWindow(): void {
+    if (this.commandBarWindow) {
+      this.commandBarWindow.show();
+      this.commandBarWindow.focus();
+      return;
+    }
+
+    const { width } = screen.getPrimaryDisplay().workAreaSize;
+
+    this.commandBarWindow = new BrowserWindow({
+      width: 800,
+      height: 600, // Height for results
+      x: (width - 800) / 2,
+      y: 200,
+      frame: false,
+      transparent: true,
+      alwaysOnTop: true,
+      resizable: false,
+      movable: false,
+      skipTaskbar: true,
+      webPreferences: {
+        preload: join(__dirname, '../preload/index.js'),
+        nodeIntegration: false,
+        contextIsolation: true,
+        sandbox: false,
+      }
+    });
+
+    if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
+      this.commandBarWindow.loadURL(`${process.env['ELECTRON_RENDERER_URL']}#command-bar`);
+    } else {
+      this.commandBarWindow.loadFile(join(__dirname, '../renderer/index.html'), { hash: 'command-bar' });
+    }
+
+    this.commandBarWindow.on('blur', () => {
+      // Auto close on blur like Spotlight?
+      // this.commandBarWindow?.hide();
+    });
+
+    this.commandBarWindow.on('closed', () => { this.commandBarWindow = null; });
+  }
+
+  /**
+   * Fecha todas as janelas
    */
   destroy(): void {
     if (this.overlayWindow) {
@@ -518,6 +677,10 @@ export class OverlayManager {
       this.translationWindow = null;
       logger.info('Translation overlay window destroyed');
     }
+    if (this.hudWindow) this.hudWindow.destroy();
+    if (this.settingsWindow) this.settingsWindow.destroy();
+    if (this.historyWindow) this.historyWindow.destroy();
+    if (this.commandBarWindow) this.commandBarWindow.destroy();
   }
 }
 

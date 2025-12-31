@@ -1,11 +1,10 @@
 .hud-container {
-    position: fixed;
-    bottom: 32px;
-    left: 50%;
-    transform: translateX(-50%);
-    z-index: 1000;
-    width: auto;
-    max-width: 90vw;
+    width: 100%;
+    height: 100%;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    background: transparent;
 }
 
 .hud-bar {
@@ -19,6 +18,17 @@
     gap: var(--space-md);
     height: 56px;
     transition: all var(--transition-normal);
+    -webkit-app-region: drag;
+    /* Allow dragging the bar */
+}
+
+.hud-section,
+.assistant-selector,
+.icon-btn,
+.input-wrapper,
+.hud-cta {
+    -webkit-app-region: no-drag;
+    /* Prevent dragging on interactive elements */
 }
 
 .hud-section {

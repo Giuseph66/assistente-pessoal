@@ -14,6 +14,12 @@
     align-items: center;
     padding: var(--space-md) var(--space-lg);
     height: 64px;
+    -webkit-app-region: drag;
+}
+
+.header-tabs,
+.end-session-btn {
+    -webkit-app-region: no-drag;
 }
 
 .header-tabs {

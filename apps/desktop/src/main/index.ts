@@ -101,7 +101,7 @@ app.whenReady().then(async () => {
     // Start engine process (async, não bloqueia)
     const engineManager = getEngineManager();
     engineManager.start().catch((error) => {
-      logger.error({ err: error }, 'Failed to start engine (continuing without STT)');
+        logger.error({ err: error }, 'Failed to start engine (continuing without STT)');
     });
 
     // Default open or close DevTools by F12 in development
@@ -113,7 +113,7 @@ app.whenReady().then(async () => {
 
     // Create overlay window
     const overlayManager = getOverlayManager();
-    
+
     // Register overlay IPC handlers BEFORE creating window to ensure they're available
     // IPC handlers for overlay
     ipcMain.on('overlay:minimize', () => {
@@ -150,11 +150,11 @@ app.whenReady().then(async () => {
             const overlayManager = getOverlayManager();
             const currentState = overlayManager.getCurrentContentProtection();
             const platformInfo = overlayManager.getPlatformInfo();
-            
+
             // Retorna estado interno se disponível, senão usa config como fallback
             const enabled = currentState !== null ? currentState : true;
-            
-            return { 
+
+            return {
                 enabled,
                 platform: platformInfo.platform,
                 supportsContentProtection: platformInfo.supportsContentProtection,
@@ -162,11 +162,11 @@ app.whenReady().then(async () => {
             };
         } catch (error: any) {
             logger.error({ err: error }, 'Failed to get content protection via IPC');
-            return { 
-                enabled: true, 
-                platform: process.platform, 
-                supportsContentProtection: false, 
-                usingWorkarounds: true 
+            return {
+                enabled: true,
+                platform: process.platform,
+                supportsContentProtection: false,
+                usingWorkarounds: true
             };
         }
     });
@@ -195,7 +195,7 @@ app.whenReady().then(async () => {
         }
     });
 
-    // IPC handler for panic button (apenas altera content protection, mantém janela visível)
+    // IPC handlers for panic button (apenas altera content protection, mantém janela visível)
     ipcMain.on('overlay:panic', (_event, { hide }: { hide: boolean }) => {
         try {
             if (hide) {
@@ -216,8 +216,44 @@ app.whenReady().then(async () => {
         }
     });
 
+    // Window Management IPCs
+    ipcMain.on('window:open-settings', () => {
+        overlayManager.createSettingsWindow();
+    });
+
+    ipcMain.on('window:open-history', () => {
+        overlayManager.createHistoryWindow();
+    });
+
+    ipcMain.on('window:open-hud', () => {
+        overlayManager.createHUDWindow();
+    });
+
+    ipcMain.on('window:open-command-bar', () => {
+        overlayManager.createCommandBarWindow();
+    });
+
+    ipcMain.on('window:minimize', (event) => {
+        const win = BrowserWindow.fromWebContents(event.sender);
+        win?.minimize();
+    });
+
+    ipcMain.on('window:maximize', (event) => {
+        const win = BrowserWindow.fromWebContents(event.sender);
+        if (win?.isMaximized()) {
+            win.unmaximize();
+        } else {
+            win?.maximize();
+        }
+    });
+
+    ipcMain.on('window:close', (event) => {
+        const win = BrowserWindow.fromWebContents(event.sender);
+        win?.close();
+    });
+
     registerScreenshotIpc();
-    
+
     overlayManager.createWindow();
 
     // Initialize STT pipeline + IPC
@@ -235,101 +271,101 @@ app.whenReady().then(async () => {
 
     const translationService = new ScreenTranslateService();
     registerTranslationIpc(translationService);
-    
+
     // Initialize AI IPC
     registerAIIpc(db);
-    
+
     // Initialize default AI providers in database
     try {
-      db.saveAIProvider({ id: 'gemini', display_name: 'Google Gemini', base_url: 'https://generativelanguage.googleapis.com' });
-      db.saveAIProvider({ id: 'openai', display_name: 'OpenAI', base_url: 'https://api.openai.com' });
-      logger.info('Default AI providers initialized');
+        db.saveAIProvider({ id: 'gemini', display_name: 'Google Gemini', base_url: 'https://generativelanguage.googleapis.com' });
+        db.saveAIProvider({ id: 'openai', display_name: 'OpenAI', base_url: 'https://api.openai.com' });
+        logger.info('Default AI providers initialized');
     } catch (error) {
-      logger.warn({ err: error }, 'Failed to initialize default AI providers (may already exist)');
+        logger.warn({ err: error }, 'Failed to initialize default AI providers (may already exist)');
     }
 
     const runInteractiveCapture = async () => {
-      overlayManager.hide();
-      try {
-        const captureResult = await captureAreaInteractive(db);
-        if (captureResult.success) {
-          const screenshots = db.getScreenshots(1);
-          if (screenshots.length > 0) {
-            gateway.broadcast({
-              type: 'screenshot.captured',
-              payload: { screenshot: screenshots[0] },
-            });
-          }
+        overlayManager.hide();
+        try {
+            const captureResult = await captureAreaInteractive(db);
+            if (captureResult.success) {
+                const screenshots = db.getScreenshots(1);
+                if (screenshots.length > 0) {
+                    gateway.broadcast({
+                        type: 'screenshot.captured',
+                        payload: { screenshot: screenshots[0] },
+                    });
+                }
+            }
+            return captureResult;
+        } catch (error: any) {
+            logger.error({ err: error }, 'Failed to capture screenshot');
+            return {
+                success: false,
+                error: error?.message || 'Unknown error',
+            };
+        } finally {
+            overlayManager.show();
         }
-        return captureResult;
-      } catch (error: any) {
-        logger.error({ err: error }, 'Failed to capture screenshot');
-        return {
-          success: false,
-          error: error?.message || 'Unknown error',
-        };
-      } finally {
-        overlayManager.show();
-      }
     };
 
     const runFullscreenCapture = async () => {
-      // Esconde overlay e janela de tradução (se estiver visível)
-      overlayManager.hide();
-      overlayManager.hideTranslationWindow();
-      // Aguarda um pouco para garantir que animações de minimizar/restaurar/fullscreen terminem
-      // antes de capturar o screenshot (evita que animações apareçam na captura)
-      // 500ms é suficiente para a maioria das animações do sistema
-      await new Promise(resolve => setTimeout(resolve, 500));
-      try {
-        const captureResult = await captureScreenshot({ mode: 'fullscreen' }, db);
-        if (captureResult.success) {
-          const screenshots = db.getScreenshots(1);
-          if (screenshots.length > 0) {
-            gateway.broadcast({
-              type: 'screenshot.captured',
-              payload: { screenshot: screenshots[0] },
-            });
-          }
+        // Esconde overlay e janela de tradução (se estiver visível)
+        overlayManager.hide();
+        overlayManager.hideTranslationWindow();
+        // Aguarda um pouco para garantir que animações de minimizar/restaurar/fullscreen terminem
+        // antes de capturar o screenshot (evita que animações apareçam na captura)
+        // 500ms é suficiente para a maioria das animações do sistema
+        await new Promise(resolve => setTimeout(resolve, 500));
+        try {
+            const captureResult = await captureScreenshot({ mode: 'fullscreen' }, db);
+            if (captureResult.success) {
+                const screenshots = db.getScreenshots(1);
+                if (screenshots.length > 0) {
+                    gateway.broadcast({
+                        type: 'screenshot.captured',
+                        payload: { screenshot: screenshots[0] },
+                    });
+                }
+            }
+            return captureResult;
+        } catch (error: any) {
+            logger.error({ err: error }, 'Failed to capture fullscreen screenshot');
+            return {
+                success: false,
+                error: error?.message || 'Unknown error',
+            };
+        } finally {
+            overlayManager.show();
         }
-        return captureResult;
-      } catch (error: any) {
-        logger.error({ err: error }, 'Failed to capture fullscreen screenshot');
-        return {
-          success: false,
-          error: error?.message || 'Unknown error',
-        };
-      } finally {
-        overlayManager.show();
-      }
     };
 
     // Configure screenshot capture callbacks for gateway
     logger.info('Configuring screenshot callbacks');
     gateway.setScreenshotCallbacks(
-      async () => {
-        logger.debug('Screenshot startCapture callback called');
-        const result = await runInteractiveCapture();
-        if (!result.success && result.error && result.error !== 'Selecao cancelada') {
-          throw new Error(result.error);
+        async () => {
+            logger.debug('Screenshot startCapture callback called');
+            const result = await runInteractiveCapture();
+            if (!result.success && result.error && result.error !== 'Selecao cancelada') {
+                throw new Error(result.error);
+            }
+        },
+        async () => {
+            // Cancel capture: interactive tools handle cancel internally
+            logger.debug('Screenshot cancel requested (interactive)');
+            overlayManager.show();
         }
-      },
-      async () => {
-        // Cancel capture: interactive tools handle cancel internally
-        logger.debug('Screenshot cancel requested (interactive)');
-        overlayManager.show();
-      }
     );
 
     // IPC handler direto para iniciar captura (alternativa ao WebSocket)
     ipcMain.on('screenshot:startCapture', () => {
-      logger.info('IPC screenshot:startCapture received');
-      runInteractiveCapture();
+        logger.info('IPC screenshot:startCapture received');
+        runInteractiveCapture();
     });
 
     ipcMain.handle('screenshot:captureFullscreen', async () => {
-      logger.info('IPC screenshot:captureFullscreen received');
-      return runFullscreenCapture();
+        logger.info('IPC screenshot:captureFullscreen received');
+        return runFullscreenCapture();
     });
 
     // Register global hotkeys
@@ -447,13 +483,13 @@ app.on('will-quit', async (event) => {
     // Marcar que estamos em processo de shutdown
     // Isso permite filtrar erros esperados de workers durante o encerramento
     setShuttingDown(true);
-    
+
     const hotkeysManager = getHotkeysManager();
     hotkeysManager.unregisterAll();
-    
+
     // Aguardar encerramento dos serviços com timeout para evitar travamento
     const shutdownPromises: Promise<void>[] = [];
-    
+
     const engineManager = getEngineManager();
     shutdownPromises.push(
         Promise.resolve().then(() => {
@@ -468,7 +504,7 @@ app.on('will-quit', async (event) => {
             logger.warn({ err: error }, 'Error stopping STT controller during shutdown');
         })
     );
-    
+
     try {
         // Aguardar até 5 segundos para o encerramento dos serviços
         await Promise.race([
@@ -484,6 +520,6 @@ app.on('will-quit', async (event) => {
         // Logar mas não bloquear o shutdown
         logger.warn({ err: error }, 'Error during shutdown cleanup');
     }
-    
+
     logger.info('Application quitting');
 })

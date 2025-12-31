@@ -1,9 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { HUD } from '../HUD/HUD';
-import { CommandBar } from '../CommandBar/CommandBar';
-import { SettingsModal } from '../Modals/SettingsModal';
-import { HistoryModal } from '../Modals/HistoryModal';
 import { SessionSidebar } from '../Panels/SessionSidebar';
+import { WindowControls } from './WindowControls';
 import './SessionLayout.css';
 
 interface SessionLayoutProps {
@@ -18,48 +15,18 @@ export const SessionLayout: React.FC<SessionLayoutProps> = ({
     onPanelChange
 }) => {
     const [isSessionActive, setIsSessionActive] = useState(false);
-    const [isCommandBarOpen, setIsCommandBarOpen] = useState(false);
-    const [isListening, setIsListening] = useState(false);
-    const [showSettings, setShowSettings] = useState(false);
-    const [showHistory, setShowHistory] = useState(false);
     const [showSessionPanel, setShowSessionPanel] = useState(false);
 
     // Keyboard shortcuts
     useEffect(() => {
         const handleKeyDown = (e: any) => {
-            // Ctrl+K or Ctrl+Space to open Command Bar
-            if ((e.ctrlKey || e.metaKey) && (e.key === 'k' || e.key === ' ')) {
-                e.preventDefault();
-                setIsCommandBarOpen(true);
-            }
-            // Ctrl+D to Analyze
-            if ((e.ctrlKey || e.metaKey) && e.key === 'd') {
-                e.preventDefault();
-                console.log('Analyze shortcut triggered');
-            }
-            // Ctrl+E to Capture
-            if ((e.ctrlKey || e.metaKey) && e.key === 'e') {
-                e.preventDefault();
-                console.log('Capture shortcut triggered');
-            }
+            // Shortcuts now handled by global accelerator or specific windows
+            // But we might want some here too
         };
 
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
     }, []);
-
-    const handleStartListening = () => {
-        setIsListening(!isListening);
-        if (!isListening) {
-            setIsSessionActive(true);
-            setShowSessionPanel(true); // Auto-open panel when starting
-        }
-    };
-
-    const handleCommand = (command: string) => {
-        console.log('Command received:', command);
-        setIsSessionActive(true);
-    };
 
     return (
         <div className="session-layout">
@@ -73,17 +40,20 @@ export const SessionLayout: React.FC<SessionLayoutProps> = ({
                         Resumo
                     </button>
                 </div>
-                <button
-                    className="end-session-btn"
-                    disabled={!isSessionActive}
-                    onClick={() => {
-                        setIsSessionActive(false);
-                        setIsListening(false);
-                        setShowSessionPanel(false);
-                    }}
-                >
-                    Encerrar Sessão
-                </button>
+
+                <div className="header-actions" style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+                    <button
+                        className="end-session-btn"
+                        disabled={!isSessionActive}
+                        onClick={() => {
+                            setIsSessionActive(false);
+                            setShowSessionPanel(false);
+                        }}
+                    >
+                        Encerrar Sessão
+                    </button>
+                    <WindowControls />
+                </div>
             </header>
 
             {/* Main Content Area */}
@@ -110,7 +80,7 @@ export const SessionLayout: React.FC<SessionLayoutProps> = ({
                                 </div>
                             </button>
 
-                            <button className="action-card" onClick={() => setIsCommandBarOpen(true)}>
+                            <button className="action-card" onClick={() => window.electron.ipcRenderer.send('window:open-command-bar')}>
                                 <div className="action-icon">💬</div>
                                 <div className="action-info">
                                     <span className="action-title">Perguntar Algo</span>
@@ -136,33 +106,6 @@ export const SessionLayout: React.FC<SessionLayoutProps> = ({
                     </div>
                 )}
             </main>
-
-            {/* HUD */}
-            <HUD
-                onOpenSettings={() => setShowSettings(true)}
-                onOpenHistory={() => setShowHistory(true)}
-                onOpenSessionPanel={() => setShowSessionPanel(true)}
-                onStartListening={handleStartListening}
-                isListening={isListening}
-            />
-
-            {/* Command Bar Overlay */}
-            <CommandBar
-                isOpen={isCommandBarOpen}
-                onClose={() => setIsCommandBarOpen(false)}
-                onCommand={handleCommand}
-            />
-
-            {/* Modals */}
-            <SettingsModal
-                isOpen={showSettings}
-                onClose={() => setShowSettings(false)}
-            />
-
-            <HistoryModal
-                isOpen={showHistory}
-                onClose={() => setShowHistory(false)}
-            />
         </div>
     );
 };
