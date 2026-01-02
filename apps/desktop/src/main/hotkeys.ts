@@ -3,7 +3,7 @@ import { getConfigManager } from '@ricky/config';
 import { getLogger } from '@ricky/logger';
 import { getOverlayManager } from './overlay';
 import { getSttController } from './stt/sttService';
-import { captureAreaInteractive } from './screenshot';
+import { captureAreaInteractiveConfirmed } from './screenshot';
 import { runTextHighlight } from './text-highlight-controller';
 import { getTextHighlightOverlayManager } from './text-highlight-overlay';
 
@@ -56,7 +56,7 @@ export class HotkeysManager {
       try {
         const { DatabaseManager } = await import('./database');
         const db = new DatabaseManager();
-        const result = await captureAreaInteractive(db);
+        const result = await captureAreaInteractiveConfirmed(db);
         if (!result.success && result.error && result.error !== 'Selecao cancelada') {
           logger.warn({ error: result.error }, 'Screenshot capture failed');
         }

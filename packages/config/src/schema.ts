@@ -3,6 +3,15 @@ import { z } from 'zod';
 /**
  * Schema de validação para configurações do aplicativo
  */
+const ScreenshotRegionSchema = z.object({
+  x: z.number(),
+  y: z.number(),
+  width: z.number(),
+  height: z.number(),
+  monitorIndex: z.number().int().optional(),
+  displayId: z.number().int().optional(),
+});
+
 export const AppConfigSchema = z.object({
   overlay: z.object({
     position: z.object({
@@ -43,6 +52,8 @@ export const AppConfigSchema = z.object({
     format: z.enum(['png', 'jpg']).default('png'),
     quality: z.number().min(0).max(100).default(90),
     ocrMode: z.enum(['local', 'ai']).default('local'),
+    ocrCaptureMode: z.enum(['fullscreen', 'area']).default('fullscreen'),
+    lastRegion: ScreenshotRegionSchema.nullable().default(null),
   }),
 });
 
@@ -84,5 +95,7 @@ export const defaultConfig: AppConfig = {
     format: 'png',
     quality: 90,
     ocrMode: 'local',
+    ocrCaptureMode: 'fullscreen',
+    lastRegion: null,
   },
 };

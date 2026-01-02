@@ -4,6 +4,7 @@ import { KeyStorage } from './storage/KeyStorage';
 import { getAIProviderManager } from './AIProviderManager';
 import { preprocessImage } from './utils/imagePreprocessor';
 import { normalizeAIConfigPatch } from './utils/aiConfigNormalization';
+import { loadModelCatalog } from './modelCatalog';
 import {
   VisionRequest,
   VisionResponse,
@@ -526,14 +527,24 @@ export class AIService {
    * Extrai texto de um screenshot (atalho para OCR)
    */
   async extractText(screenshotId: number): Promise<string> {
+    const maxTokens = this.getExtractTextMaxTokens();
     const response = await this.analyzeScreenshot({
       screenshotId,
       prompt: '',
       mode: 'extract_text',
+      options: { maxTokens },
     });
 
     if (!response.success || !response.response) {
       throw new Error(response.error || 'Failed to extract text');
+    }
+
+    const tokensOut = response.response.usage?.tokensOut;
+    if (typeof tokensOut === 'number' && tokensOut >= maxTokens - 16) {
+      logger.warn(
+        { tokensOut, maxTokens },
+        'ExtractText output near token limit (may be truncated)'
+      );
     }
 
     return response.response.recognizedText || response.response.answerText;
@@ -558,5 +569,26 @@ export class AIService {
     message = message.replace(/sk-[a-zA-Z0-9]{20,}/g, 'sk-***');
     message = message.replace(/AIza[0-9A-Za-z_-]{35}/g, 'AIza***');
     return message;
+  }
+
+  private getExtractTextMaxTokens(): number {
+    const catalog = this.getModelMaxTokens();
+    if (typeof catalog === 'number' && Number.isFinite(catalog) && catalog > 0) {
+      return Math.floor(catalog);
+    }
+    return 4096;
+  }
+
+  private getModelMaxTokens(): number | null {
+    try {
+      const catalog = loadModelCatalog();
+      const provider = catalog.providers?.[this.config.providerId];
+      const models = provider?.models || [];
+      const model = models.find((entry) => entry.id === this.config.modelName);
+      return typeof model?.maxTokens === 'number' ? model.maxTokens : null;
+    } catch (error) {
+      logger.warn({ err: error }, 'Failed to resolve model max tokens');
+      return null;
+    }
   }
 }

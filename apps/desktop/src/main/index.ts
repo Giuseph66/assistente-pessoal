@@ -8,14 +8,21 @@ import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { setupErrorHandlers, setShuttingDown } from './error-handler'
 import { getOverlayManager } from './overlay'
 import { getTextHighlightOverlayManager } from './text-highlight-overlay'
-import { runTextHighlight, getTextHighlightMode, setTextHighlightMode, getLastTextHighlightTranscription } from './text-highlight-controller'
+import {
+    runTextHighlight,
+    getTextHighlightMode,
+    setTextHighlightMode,
+    getTextHighlightCaptureMode,
+    setTextHighlightCaptureMode,
+    getLastTextHighlightTranscription
+} from './text-highlight-controller'
 import { getHotkeysManager } from './hotkeys'
 import { getConfigManager } from '@ricky/config'
 import { getLogger } from '@ricky/logger'
 import { DatabaseManager } from './database'
 import { Gateway } from './gateway'
 import { getEngineManager } from './engine-manager'
-import { captureAreaInteractive, captureScreenshot } from './screenshot'
+import { captureAreaInteractiveConfirmed, captureScreenshot } from './screenshot'
 import { registerSttIpc } from './ipc/sttIpc'
 import { registerModelIpc } from './ipc/modelIpc'
 import { registerSystemAudioIpc } from './ipc/systemAudioIpc'
@@ -134,6 +141,15 @@ app.whenReady().then(async () => {
 
    ipcMain.handle('text-highlight:getLastTranscription', async () => {
      return getLastTextHighlightTranscription();
+   });
+
+   ipcMain.handle('text-highlight:getCaptureMode', async () => {
+     return { mode: getTextHighlightCaptureMode() };
+   });
+
+   ipcMain.handle('text-highlight:setCaptureMode', async (_event, mode: 'fullscreen' | 'area') => {
+     const nextMode = setTextHighlightCaptureMode(mode);
+     return { mode: nextMode };
    });
 
    // Listen for HUD trigger to start OCR overlay
@@ -534,7 +550,7 @@ app.whenReady().then(async () => {
     const runInteractiveCapture = async () => {
         overlayManager.hide();
         try {
-            const captureResult = await captureAreaInteractive(db);
+            const captureResult = await captureAreaInteractiveConfirmed(db);
             if (captureResult.success) {
                 const screenshots = db.getScreenshots(1);
                 if (screenshots.length > 0) {

@@ -417,6 +417,49 @@ export class OverlayManager {
   }
 
   /**
+   * Verifica se o HUD está visível
+   */
+  isHUDWindowVisible(): boolean {
+    return Boolean(this.hudWindow && !this.hudWindow.isDestroyed() && this.hudWindow.isVisible());
+  }
+
+  /**
+   * Mostra/oculta o HUD principal
+   */
+  setHUDWindowVisible(visible: boolean): void {
+    if (!this.hudWindow || this.hudWindow.isDestroyed()) return;
+    if (visible) {
+      if (!this.hudWindow.isVisible()) {
+        this.hudWindow.show();
+      }
+    } else if (this.hudWindow.isVisible()) {
+      this.hudWindow.hide();
+    }
+  }
+
+  /**
+   * Verifica se o Mini HUD está visível
+   */
+  isMiniHUDVisible(): boolean {
+    return Boolean(this.miniHUDWindow && !this.miniHUDWindow.isDestroyed() && this.miniHUDWindow.isVisible());
+  }
+
+  /**
+   * Mostra/oculta o Mini HUD
+   */
+  setMiniHUDVisible(visible: boolean): void {
+    if (!this.miniHUDWindow || this.miniHUDWindow.isDestroyed()) return;
+    if (visible) {
+      if (!this.miniHUDWindow.isVisible()) {
+        this.miniHUDWindow.show();
+        this.miniHUDWindow.setAlwaysOnTop(true, 'screen-saver');
+      }
+    } else if (this.miniHUDWindow.isVisible()) {
+      this.miniHUDWindow.hide();
+    }
+  }
+
+  /**
    * Obtém a posição da janela ativa ou HUD
    */
   getWindowPosition(): number[] {
@@ -532,6 +575,7 @@ export class OverlayManager {
   private settingsWindow: BrowserWindow | null = null;
   private historyWindow: BrowserWindow | null = null;
   private textHighlightOutputWindow: BrowserWindow | null = null;
+  private screenshotSelectorWindow: BrowserWindow | null = null;
   private commandBarWindow: BrowserWindow | null = null;
   private hudDropdownWindow: BrowserWindow | null = null;
   private vintageWindow: BrowserWindow | null = null;
@@ -842,6 +886,59 @@ export class OverlayManager {
   }
 
   /**
+   * Mostra a janela de selecao de area para screenshot
+   */
+  showScreenshotSelectorWindow(display?: Electron.Display): void {
+    const targetDisplay = display || screen.getPrimaryDisplay();
+    if (this.screenshotSelectorWindow && !this.screenshotSelectorWindow.isDestroyed()) {
+      this.screenshotSelectorWindow.setBounds(targetDisplay.bounds, true);
+      this.screenshotSelectorWindow.show();
+      this.screenshotSelectorWindow.focus();
+      return;
+    }
+
+    this.screenshotSelectorWindow = new BrowserWindow({
+      x: targetDisplay.bounds.x,
+      y: targetDisplay.bounds.y,
+      width: targetDisplay.bounds.width,
+      height: targetDisplay.bounds.height,
+      frame: false,
+      transparent: true,
+      backgroundColor: '#00000000',
+      resizable: false,
+      movable: false,
+      focusable: true,
+      alwaysOnTop: true,
+      skipTaskbar: true,
+      hasShadow: false,
+      webPreferences: {
+        preload: join(__dirname, '../preload/index.js'),
+        nodeIntegration: false,
+        contextIsolation: true,
+        sandbox: false,
+      }
+    });
+
+    this.screenshotSelectorWindow.setMenuBarVisibility(false);
+    this.screenshotSelectorWindow.setAlwaysOnTop(true, 'screen-saver');
+
+    if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
+      this.screenshotSelectorWindow.loadURL(`${process.env['ELECTRON_RENDERER_URL']}#screenshot-selector`);
+    } else {
+      this.screenshotSelectorWindow.loadFile(join(__dirname, '../renderer/index.html'), { hash: 'screenshot-selector' });
+    }
+
+    this.screenshotSelectorWindow.on('closed', () => { this.screenshotSelectorWindow = null; });
+  }
+
+  /**
+   * Obtém a janela de selecao de area para screenshot
+   */
+  getScreenshotSelectorWindow(): BrowserWindow | null {
+    return this.screenshotSelectorWindow;
+  }
+
+  /**
    * Cria a janela Command Bar (Spotlight style)
    */
   createCommandBarWindow(): void {
@@ -1010,6 +1107,7 @@ export class OverlayManager {
     if (this.settingsWindow) this.settingsWindow.destroy();
     if (this.historyWindow) this.historyWindow.destroy();
     if (this.textHighlightOutputWindow) this.textHighlightOutputWindow.destroy();
+    if (this.screenshotSelectorWindow) this.screenshotSelectorWindow.destroy();
     if (this.commandBarWindow) this.commandBarWindow.destroy();
     if (this.hudDropdownWindow) this.hudDropdownWindow.destroy();
     if (this.vintageWindow) this.vintageWindow.destroy();

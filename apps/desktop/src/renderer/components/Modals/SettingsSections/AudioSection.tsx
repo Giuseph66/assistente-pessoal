@@ -34,6 +34,7 @@ export const AudioSection: React.FC<AudioSectionProps> = ({
     const [isCheckingPermissions, setIsCheckingPermissions] = useState(true);
     const [confirmDialog, setConfirmDialog] = useState<{ type: 'microphone' | 'systemAudio' | 'screen' | null; resourceName: string }>({ type: null, resourceName: '' });
     const [ocrMode, setOcrMode] = useState<'local' | 'ai'>('local');
+    const [ocrCaptureMode, setOcrCaptureMode] = useState<'fullscreen' | 'area'>('fullscreen');
 
     useEffect(() => {
         checkPermissions();
@@ -51,6 +52,20 @@ export const AudioSection: React.FC<AudioSectionProps> = ({
             }
         };
         loadOcrMode();
+    }, []);
+
+    useEffect(() => {
+        const loadCaptureMode = async () => {
+            try {
+                const result = await window.textHighlightAPI?.getCaptureMode?.();
+                if (result?.mode === 'area' || result?.mode === 'fullscreen') {
+                    setOcrCaptureMode(result.mode);
+                }
+            } catch {
+                // ignore
+            }
+        };
+        loadCaptureMode();
     }, []);
 
     const checkPermissions = async () => {
@@ -317,6 +332,38 @@ export const AudioSection: React.FC<AudioSectionProps> = ({
                             onChange={(val) => showToast(`Frequência alterada para ${val}`)}
                             options={['0.5 FPS', '1 FPS', '2 FPS', '5 FPS']}
                         />
+                    </div>
+                    <div className="input-group">
+                        <label>Área de Captura</label>
+                        <div className="ocr-mode-toggle">
+                            <button
+                                className={`ocr-mode-option ${ocrCaptureMode === 'fullscreen' ? 'active' : ''}`}
+                                onClick={async () => {
+                                    setOcrCaptureMode('fullscreen');
+                                    await window.textHighlightAPI?.setCaptureMode?.('fullscreen');
+                                    showToast('OCR por tela inteira');
+                                }}
+                                type="button"
+                            >
+                                <span className="ocr-mode-dot" />
+                                Tela inteira
+                            </button>
+                            <button
+                                className={`ocr-mode-option ${ocrCaptureMode === 'area' ? 'active' : ''}`}
+                                onClick={async () => {
+                                    setOcrCaptureMode('area');
+                                    await window.textHighlightAPI?.setCaptureMode?.('area');
+                                    showToast('OCR por área específica');
+                                }}
+                                type="button"
+                            >
+                                <span className="ocr-mode-dot" />
+                                Área específica
+                            </button>
+                        </div>
+                        <span className="ocr-mode-helper">
+                            Área específica abre a seleção de captura antes do OCR.
+                        </span>
                     </div>
                     <div className="input-group">
                         <label>Processamento de OCR</label>

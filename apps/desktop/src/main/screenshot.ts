@@ -1,4 +1,4 @@
-import { desktopCapturer, screen, nativeImage } from 'electron';
+import { desktopCapturer, screen, nativeImage, ipcMain } from 'electron';
 import { writeFile, mkdir, rename, unlink } from 'fs/promises';
 import { join } from 'path';
 import { homedir } from 'os';
@@ -7,6 +7,7 @@ import { getConfigManager } from '@ricky/config';
 import { getLogger } from '@ricky/logger';
 import { DatabaseManager } from './database';
 import { spawn } from 'child_process';
+import { getOverlayManager } from './overlay';
 
 const logger = getLogger();
 const config = getConfigManager();
@@ -31,6 +32,8 @@ export interface ScreenshotResult {
   width?: number;
   height?: number;
   screenshotId?: number;
+  monitorIndex?: number;
+  displayId?: number;
   region?: {
     x: number;
     y: number;
@@ -95,11 +98,24 @@ export async function captureScreenshot(
     const displayServer = detectDisplayServer();
     logger.debug({ displayServer, options }, 'Capturing screenshot');
 
-    const primaryDisplay = screen.getPrimaryDisplay();
-    const scaleFactor = primaryDisplay.scaleFactor || 1;
+    const displays = screen.getAllDisplays();
+    let targetDisplay = screen.getPrimaryDisplay();
+    if (typeof options.monitorIndex === 'number' && displays[options.monitorIndex]) {
+      targetDisplay = displays[options.monitorIndex];
+    } else if (options.region) {
+      targetDisplay = screen.getDisplayMatching({
+        x: options.region.x,
+        y: options.region.y,
+        width: options.region.width,
+        height: options.region.height,
+      });
+    }
+
+    const displayIndex = displays.findIndex((display) => display.id === targetDisplay.id);
+    const scaleFactor = targetDisplay.scaleFactor || 1;
     const thumbnailSize = {
-      width: Math.round(primaryDisplay.size.width * scaleFactor),
-      height: Math.round(primaryDisplay.size.height * scaleFactor),
+      width: Math.round(targetDisplay.size.width * scaleFactor),
+      height: Math.round(targetDisplay.size.height * scaleFactor),
     };
     
     const sources = await desktopCapturer.getSources({
@@ -117,9 +133,9 @@ export async function captureScreenshot(
     let source: Electron.DesktopCapturerSource | undefined;
 
     if (options.mode === 'fullscreen' || options.mode === 'area') {
-      // Captura a tela principal (region também precisa da tela completa primeiro)
-      const primaryDisplay = screen.getPrimaryDisplay();
-      source = sources.find((s) => s.id.startsWith('screen:'));
+      const sourceById = sources.find((s) => String(s.display_id) === String(targetDisplay.id));
+      const screenSources = sources.filter((s) => s.id.startsWith('screen:'));
+      source = sourceById || screenSources[displayIndex] || screenSources[0];
     } else if (options.mode === 'window' && options.windowId) {
       // Captura janela específica
       source = sources.find((s) => s.id === `window:${options.windowId}`);
@@ -170,8 +186,10 @@ export async function captureScreenshot(
     // Se for modo area, fazer crop na imagem nativa (sem Sharp)
     if (options.mode === 'area' && options.region) {
       const { x, y, width, height } = options.region;
-      const scaledX = Math.round(x * scaleFactor);
-      const scaledY = Math.round(y * scaleFactor);
+      const localX = x - targetDisplay.bounds.x;
+      const localY = y - targetDisplay.bounds.y;
+      const scaledX = Math.round(localX * scaleFactor);
+      const scaledY = Math.round(localY * scaleFactor);
       const scaledWidth = Math.round(width * scaleFactor);
       const scaledHeight = Math.round(height * scaleFactor);
 
@@ -215,7 +233,7 @@ export async function captureScreenshot(
         height: finalHeight,
         mode: options.mode,
         source_app: source.name,
-        monitor_index: options.monitorIndex,
+        monitor_index: displayIndex >= 0 ? displayIndex : options.monitorIndex,
         created_at: Date.now(),
       });
       logger.info({ filePath, width: finalWidth, height: finalHeight, screenshotId }, 'Screenshot saved');
@@ -225,6 +243,9 @@ export async function captureScreenshot(
         width: finalWidth,
         height: finalHeight,
         screenshotId,
+        monitorIndex: displayIndex >= 0 ? displayIndex : options.monitorIndex,
+        displayId: targetDisplay.id,
+        region: options.mode === 'area' ? options.region : undefined,
       };
     }
 
@@ -235,6 +256,9 @@ export async function captureScreenshot(
       path: filePath,
       width: finalWidth,
       height: finalHeight,
+      monitorIndex: displayIndex >= 0 ? displayIndex : options.monitorIndex,
+      displayId: targetDisplay.id,
+      region: options.mode === 'area' ? options.region : undefined,
     };
   } catch (error: any) {
     logger.error({ err: error, options }, 'Failed to capture screenshot');
@@ -374,6 +398,17 @@ export async function captureAreaInteractive(db?: DatabaseManager): Promise<Scre
     const image = nativeImage.createFromPath(filePath);
     const { width, height } = image.getSize();
 
+    const display = region
+      ? screen.getDisplayMatching({
+          x: region.x,
+          y: region.y,
+          width: region.width,
+          height: region.height,
+        })
+      : screen.getPrimaryDisplay();
+    const displays = screen.getAllDisplays();
+    const monitorIndex = displays.findIndex((item) => item.id === display.id);
+
     const fileStats = await import('fs/promises').then((fs) => fs.stat(filePath));
 
     if (db) {
@@ -384,7 +419,7 @@ export async function captureAreaInteractive(db?: DatabaseManager): Promise<Scre
         height,
         mode: 'area',
         source_app: displayServer,
-        monitor_index: undefined,
+        monitor_index: monitorIndex >= 0 ? monitorIndex : undefined,
         created_at: Date.now(),
       });
       logger.info({ filePath, width, height, screenshotId }, 'Screenshot saved (interactive)');
@@ -395,6 +430,8 @@ export async function captureAreaInteractive(db?: DatabaseManager): Promise<Scre
         height,
         region: region || undefined,
         screenshotId,
+        monitorIndex: monitorIndex >= 0 ? monitorIndex : undefined,
+        displayId: display.id,
       };
     }
 
@@ -406,6 +443,8 @@ export async function captureAreaInteractive(db?: DatabaseManager): Promise<Scre
       width,
       height,
       region: region || undefined,
+      monitorIndex: monitorIndex >= 0 ? monitorIndex : undefined,
+      displayId: display.id,
     };
   } catch (error: any) {
     logger.error({ err: error }, 'Failed to capture interactive screenshot');
@@ -420,3 +459,153 @@ export async function captureAreaInteractive(db?: DatabaseManager): Promise<Scre
  * @deprecated Use captureArea instead
  */
 export const captureRegion = captureArea;
+
+type LastCaptureRegion = {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  monitorIndex?: number;
+  displayId?: number;
+};
+
+function getLastCaptureRegion(): LastCaptureRegion | null {
+  try {
+    const value = config.get('screenshots', 'lastRegion') as LastCaptureRegion | null;
+    if (!value) return null;
+    if (!Number.isFinite(value.x) || !Number.isFinite(value.y)) return null;
+    if (!Number.isFinite(value.width) || !Number.isFinite(value.height)) return null;
+    return value;
+  } catch {
+    return null;
+  }
+}
+
+function saveLastCaptureRegion(region: LastCaptureRegion): void {
+  config.set('screenshots', 'lastRegion', region);
+}
+
+type ScreenshotSelectorAction = 'confirm' | 'cancel';
+
+type ScreenshotSelectorResult = {
+  token: string;
+  action: ScreenshotSelectorAction;
+  region?: { x: number; y: number; width: number; height: number };
+  monitorIndex?: number;
+  displayId?: number;
+};
+
+async function selectScreenshotRegion(lastRegion: LastCaptureRegion | null): Promise<LastCaptureRegion | null> {
+  const overlayManager = getOverlayManager();
+  const displays = screen.getAllDisplays();
+  const cursor = screen.getCursorScreenPoint();
+  let targetDisplay = screen.getDisplayNearestPoint(cursor);
+
+  if (lastRegion?.displayId) {
+    const matched = displays.find((display) => display.id === lastRegion.displayId);
+    if (matched) targetDisplay = matched;
+  } else if (typeof lastRegion?.monitorIndex === 'number' && displays[lastRegion.monitorIndex]) {
+    targetDisplay = displays[lastRegion.monitorIndex];
+  }
+
+  overlayManager.showScreenshotSelectorWindow(targetDisplay);
+  const win = overlayManager.getScreenshotSelectorWindow();
+  if (!win || win.isDestroyed()) {
+    return null;
+  }
+
+  const displayIndex = displays.findIndex((display) => display.id === targetDisplay.id);
+  const token = `selector-${Date.now()}-${Math.floor(Math.random() * 1_000_000)}`;
+
+  return new Promise((resolve) => {
+    let resolved = false;
+
+    const cleanup = (result: LastCaptureRegion | null) => {
+      if (resolved) return;
+      resolved = true;
+      ipcMain.removeListener('screenshot-selector:result', onResult);
+      if (win && !win.isDestroyed()) {
+        win.close();
+      }
+      resolve(result);
+    };
+
+    const onResult = (_event: Electron.IpcMainEvent, payload: ScreenshotSelectorResult) => {
+      if (payload?.token !== token) return;
+      if (payload.action === 'confirm' && payload.region) {
+        cleanup({
+          x: payload.region.x,
+          y: payload.region.y,
+          width: payload.region.width,
+          height: payload.region.height,
+          monitorIndex: payload.monitorIndex ?? displayIndex,
+          displayId: payload.displayId ?? targetDisplay.id,
+        });
+        return;
+      }
+      cleanup(null);
+    };
+
+    const onClosed = () => cleanup(null);
+
+    ipcMain.on('screenshot-selector:result', onResult);
+    win.once('closed', onClosed);
+
+    const sendPayload = () => {
+      if (win.isDestroyed()) {
+        cleanup(null);
+        return;
+      }
+      win.webContents.send('screenshot-selector:data', {
+        token,
+        displayBounds: targetDisplay.bounds,
+        lastRegion,
+        displayId: targetDisplay.id,
+        monitorIndex: displayIndex,
+      });
+    };
+
+    if (win.webContents.isLoadingMainFrame()) {
+      win.webContents.once('did-finish-load', sendPayload);
+    } else {
+      sendPayload();
+    }
+  });
+}
+
+export async function captureAreaInteractiveConfirmed(db?: DatabaseManager): Promise<ScreenshotResult> {
+  const lastRegion = getLastCaptureRegion();
+  const selectedRegion = await selectScreenshotRegion(lastRegion);
+  if (!selectedRegion) {
+    return { success: false, error: 'Selecao cancelada' };
+  }
+
+  await new Promise((resolve) => setTimeout(resolve, 140));
+
+  const captureResult = await captureScreenshot(
+    {
+      mode: 'area',
+      region: {
+        x: selectedRegion.x,
+        y: selectedRegion.y,
+        width: selectedRegion.width,
+        height: selectedRegion.height,
+      },
+      monitorIndex: selectedRegion.monitorIndex,
+    },
+    db
+  );
+
+  if (captureResult.success) {
+    saveLastCaptureRegion({
+      x: selectedRegion.x,
+      y: selectedRegion.y,
+      width: selectedRegion.width,
+      height: selectedRegion.height,
+      monitorIndex: selectedRegion.monitorIndex,
+      displayId: selectedRegion.displayId,
+    });
+  }
+
+  return captureResult;
+}

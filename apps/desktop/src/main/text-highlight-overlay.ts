@@ -1,12 +1,14 @@
 import { BrowserWindow, screen, desktopCapturer } from 'electron';
 import { join } from 'path';
-import { writeFile } from 'fs/promises';
+import { writeFile, readFile } from 'fs/promises';
 import { spawn } from 'child_process';
 import { getLogger } from '@ricky/logger';
 import { TesseractJsProvider } from './services/translation/ocr/TesseractJsProvider';
 import { TesseractCliProvider } from './services/translation/ocr/TesseractCliProvider';
 import type { OCRProvider } from './services/translation/ocr/OCRProvider';
 import type { TextHighlightBox } from '@ricky/shared';
+import type { ScreenshotResult } from './screenshot';
+import { getOverlayManager } from './overlay';
 import * as os from 'os';
 import { is } from '@electron-toolkit/utils';
 
@@ -644,6 +646,74 @@ export class TextHighlightOverlayManager {
     return this.runHighlightFlow(true);
   }
 
+  async highlightCaptureArea(capture: ScreenshotResult): Promise<string> {
+    if (this.isRunning) return '';
+    const now = Date.now();
+    if (now - this.lastRunAt < this.throttleMs) return '';
+    this.lastRunAt = now;
+    this.isRunning = true;
+    try {
+      if (!capture.success || !capture.path) return '';
+      await this.ensureOverlays();
+      this.clearAllOverlays();
+
+      const pngBuffer = await readFile(capture.path);
+      const rawBoxes = await this.runTextHighlightBoxesFromBuffer(
+        pngBuffer,
+        this.minConfidenceDefault,
+        this.minTextLengthDefault
+      );
+
+      const text = this.buildTextFromBoxes(rawBoxes);
+      const region = capture.region;
+      const offsetX = region?.x ?? 0;
+      const offsetY = region?.y ?? 0;
+      const displays = screen.getAllDisplays();
+      let targetDisplay = screen.getPrimaryDisplay();
+      if (typeof capture.monitorIndex === 'number' && displays[capture.monitorIndex]) {
+        targetDisplay = displays[capture.monitorIndex];
+      } else if (capture.displayId) {
+        const found = displays.find((display) => display.id === capture.displayId);
+        if (found) targetDisplay = found;
+      } else if (region) {
+        targetDisplay = screen.getDisplayMatching({
+          x: region.x,
+          y: region.y,
+          width: region.width,
+          height: region.height,
+        });
+      }
+      const scaleFactor = targetDisplay?.scaleFactor || 1;
+      const localOffsetX = offsetX - targetDisplay.bounds.x;
+      const localOffsetY = offsetY - targetDisplay.bounds.y;
+
+      const boxes = rawBoxes
+        .map((b) => ({
+          ...b,
+          x: (b.x + localOffsetX) / scaleFactor,
+          y: (b.y + localOffsetY) / scaleFactor,
+          w: b.w / scaleFactor,
+          h: b.h / scaleFactor,
+        }))
+        .filter((b) => b.w > 0 && b.h > 0);
+
+      const overlayWindow = this.getOverlayWindow(targetDisplay);
+      if (overlayWindow && overlayWindow.webContents) {
+        overlayWindow.webContents.send('text-highlight:setBoxes', {
+          boxes,
+          ttlMs: this.ttlMsDefault,
+        });
+      }
+
+      return text;
+    } catch (err) {
+      this.logger.error({ err }, 'TextHighlightOverlay: failed to highlight capture area');
+      return '';
+    } finally {
+      this.isRunning = false;
+    }
+  }
+
   async showLoading(): Promise<void> {
     await this.ensureOverlays();
     this.setLoadingAllOverlays(true);
@@ -669,10 +739,15 @@ export class TextHighlightOverlayManager {
     this.isRunning = true;
     const displays = screen.getAllDisplays();
     const textByDisplay: string[] = [];
+    const overlayManager = getOverlayManager();
+    const hudWasVisible = overlayManager.isHUDWindowVisible();
+    const miniHudWasVisible = overlayManager.isMiniHUDVisible();
     try {
       this.clearAllOverlays();
       await this.ensureOverlays();
       this.setLoadingAllOverlays(true);
+      overlayManager.setHUDWindowVisible(false);
+      overlayManager.setMiniHUDVisible(false);
       this.setOverlaysVisible(false);
       await this.delay(140);
       const captures: Array<{ display: Electron.Display; pngBuffer: Buffer; scaleFactor: number }> = [];
@@ -720,6 +795,12 @@ export class TextHighlightOverlayManager {
     } finally {
       this.setOverlaysVisible(true);
       this.setLoadingAllOverlays(false);
+      if (hudWasVisible) {
+        overlayManager.setHUDWindowVisible(true);
+      }
+      if (miniHudWasVisible) {
+        overlayManager.setMiniHUDVisible(true);
+      }
       this.isRunning = false;
     }
     return textByDisplay.filter(Boolean).join('\n\n');

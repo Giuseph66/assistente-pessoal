@@ -72,6 +72,8 @@ export class ConfigManager {
             format: { type: 'string' },
             quality: { type: 'number' },
             ocrMode: { type: 'string' },
+            ocrCaptureMode: { type: 'string' },
+            lastRegion: { type: ['object', 'null'] },
           },
         },
       },

@@ -149,6 +149,8 @@ declare global {
       getLastTranscription: () => Promise<{ text: string; mode: 'local' | 'ai'; createdAt: number } | null>;
       getMode: () => Promise<{ mode: 'local' | 'ai' }>;
       setMode: (mode: 'local' | 'ai') => Promise<{ mode: 'local' | 'ai' }>;
+      getCaptureMode: () => Promise<{ mode: 'fullscreen' | 'area' }>;
+      setCaptureMode: (mode: 'fullscreen' | 'area') => Promise<{ mode: 'fullscreen' | 'area' }>;
     };
     electron: {
       ipcRenderer: {

@@ -8,6 +8,7 @@ import { CommandBar } from './components/CommandBar/CommandBar';
 import { VintageWindow } from './components/HUD/VintageWindow';
 import { MiniHUD } from './components/HUD/MiniHUD';
 import { TextHighlightOutput } from './components/TextHighlightOverlay/TextHighlightOutput';
+import { ScreenshotSelector } from './components/ScreenshotSelector/ScreenshotSelector';
 import { initSttStore } from './store/sttStore';
 import './styles/global.css';
 
@@ -93,6 +94,10 @@ function App(): JSX.Element {
 
     if (route === '#text-highlight-output') {
         return <TextHighlightOutput />;
+    }
+
+    if (route === '#screenshot-selector') {
+        return <ScreenshotSelector />;
     }
 
         // Default to OverlayContainer (Main Session Window)

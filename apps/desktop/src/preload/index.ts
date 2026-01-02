@@ -230,6 +230,8 @@ const textHighlightApi = {
     getLastTranscription: () => ipcRenderer.invoke('text-highlight:getLastTranscription'),
     getMode: () => ipcRenderer.invoke('text-highlight:getMode'),
     setMode: (mode: 'local' | 'ai') => ipcRenderer.invoke('text-highlight:setMode', mode),
+    getCaptureMode: () => ipcRenderer.invoke('text-highlight:getCaptureMode'),
+    setCaptureMode: (mode: 'fullscreen' | 'area') => ipcRenderer.invoke('text-highlight:setCaptureMode', mode),
 }
 
 const aiApi = {
