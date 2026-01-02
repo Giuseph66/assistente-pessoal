@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { SessionLayout } from '../Layout/SessionLayout';
 import { TranslationOverlayRoot } from '../Translation/TranslationOverlayRoot';
+import { TextHighlightOverlay } from '../TextHighlightOverlay/TextHighlightOverlay';
 import { DragHandle } from './DragHandle';
 import { SttMicBridge } from '../SttMicBridge';
 import './OverlayContainer.css';
@@ -17,6 +18,7 @@ export function OverlayContainer(): JSX.Element {
   const hash = window.location.hash;
   const isOverlayMode = hash === '#overlay';
   const isTranslationOverlay = hash === '#translation-overlay';
+  const isTextHighlightOverlay = hash === '#text-highlight-overlay' || hash === '#text-highlight';
 
   // Verifica status inicial do overlay
   useEffect(() => {
@@ -122,6 +124,10 @@ export function OverlayContainer(): JSX.Element {
 
   if (isTranslationOverlay) {
     return <TranslationOverlayRoot />;
+  }
+
+  if (isTextHighlightOverlay) {
+    return <TextHighlightOverlay />;
   }
 
   if (!isOverlayMode) {

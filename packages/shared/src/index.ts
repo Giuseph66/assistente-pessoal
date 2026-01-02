@@ -11,6 +11,7 @@ export * from './audio/types.js';
 export * from './subtitles/types.js';
 export * from './translation/types.js';
 export * from './ai/types.js';
+export * from './textHighlight/types.js';
 
 export enum IpcChannels {
     OVERLAY_TOGGLE = 'overlay.toggle',

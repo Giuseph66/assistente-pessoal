@@ -4,6 +4,8 @@ import { getLogger } from '@ricky/logger';
 import { getOverlayManager } from './overlay';
 import { getSttController } from './stt/sttService';
 import { captureAreaInteractive } from './screenshot';
+import { runTextHighlight } from './text-highlight-controller';
+import { getTextHighlightOverlayManager } from './text-highlight-overlay';
 
 const logger = getLogger();
 const config = getConfigManager();
@@ -20,6 +22,7 @@ export class HotkeysManager {
   registerAll(): void {
     const hotkeys = config.getAll().hotkeys;
     const overlayManager = getOverlayManager();
+    const thManager = getTextHighlightOverlayManager();
 
     // Toggle overlay
     this.register(hotkeys.toggleOverlay, () => {
@@ -72,8 +75,23 @@ export class HotkeysManager {
       overlayManager.setPresentationMode(!currentMode);
     });
 
+    // Text Highlight Overlay (Capture OCR-based text boxes)
+    const textHighlightKey = (config.getAll().hotkeys as any).textHighlight ?? 'Ctrl+E';
+    const textHighlightClearKey = (config.getAll().hotkeys as any).textHighlightClear ?? 'Escape';
+    this.register(textHighlightKey, () => {
+      logger.debug('Hotkey: text highlight (OCR overlay)');
+      runTextHighlight().catch((err) => {
+        logger.error({ err }, 'TextHighlightOverlay: failed to highlight displays');
+      });
+    });
+    this.register(textHighlightClearKey, () => {
+      logger.debug('Hotkey: clear text highlight overlay');
+      thManager.clearAllOverlays();
+    });
+
     // Panic mode (apenas altera content protection, mantém janela visível)
-    this.register(hotkeys.panicMode, () => {
+    const panicHotkey = (hotkeys as any).panicMode ?? 'CommandOrControl+Alt+H';
+    this.register(panicHotkey, () => {
       logger.debug('Hotkey: panic mode');
       const overlayManager = getOverlayManager();
       const currentState = overlayManager.getCurrentContentProtection();

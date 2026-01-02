@@ -33,9 +33,24 @@ export const AudioSection: React.FC<AudioSectionProps> = ({
     const [screenPermissionGranted, setScreenPermissionGranted] = useState<boolean | null>(null);
     const [isCheckingPermissions, setIsCheckingPermissions] = useState(true);
     const [confirmDialog, setConfirmDialog] = useState<{ type: 'microphone' | 'systemAudio' | 'screen' | null; resourceName: string }>({ type: null, resourceName: '' });
+    const [ocrMode, setOcrMode] = useState<'local' | 'ai'>('local');
 
     useEffect(() => {
         checkPermissions();
+    }, []);
+
+    useEffect(() => {
+        const loadOcrMode = async () => {
+            try {
+                const result = await window.textHighlightAPI?.getMode?.();
+                if (result?.mode === 'ai' || result?.mode === 'local') {
+                    setOcrMode(result.mode);
+                }
+            } catch {
+                // ignore
+            }
+        };
+        loadOcrMode();
     }, []);
 
     const checkPermissions = async () => {
@@ -303,9 +318,40 @@ export const AudioSection: React.FC<AudioSectionProps> = ({
                             options={['0.5 FPS', '1 FPS', '2 FPS', '5 FPS']}
                         />
                     </div>
+                    <div className="input-group">
+                        <label>Processamento de OCR</label>
+                        <div className="ocr-mode-toggle">
+                            <button
+                                className={`ocr-mode-option ${ocrMode === 'local' ? 'active' : ''}`}
+                                onClick={async () => {
+                                    setOcrMode('local');
+                                    await window.textHighlightAPI?.setMode?.('local');
+                                    showToast('OCR local ativado');
+                                }}
+                                type="button"
+                            >
+                                <span className="ocr-mode-dot" />
+                                Processamento Local
+                            </button>
+                            <button
+                                className={`ocr-mode-option ${ocrMode === 'ai' ? 'active' : ''}`}
+                                onClick={async () => {
+                                    setOcrMode('ai');
+                                    await window.textHighlightAPI?.setMode?.('ai');
+                                    showToast('OCR por IA ativado');
+                                }}
+                                type="button"
+                            >
+                                <span className="ocr-mode-dot" />
+                                Inteligência Artificial
+                            </button>
+                        </div>
+                        <span className="ocr-mode-helper">
+                            IA usa o modelo configurado para transcrever a tela. Local usa o OCR do dispositivo.
+                        </span>
+                    </div>
                 </div>
             </div>
         </div>
     );
 };
-

@@ -71,6 +71,7 @@ export class ConfigManager {
             savePath: { type: 'string' },
             format: { type: 'string' },
             quality: { type: 'number' },
+            ocrMode: { type: 'string' },
           },
         },
       },
@@ -162,4 +163,3 @@ export function getConfigManager(): ConfigManager {
   }
   return configManager;
 }
-

@@ -22,6 +22,7 @@ import {
   AnalyzeChatRequest,
   AnalyzeChatResponse,
   PromptTemplate,
+  TextHighlightBox,
 } from '@ricky/shared';
 
 declare global {
@@ -139,6 +140,15 @@ declare global {
       }>;
       getDisplayCount: () => Promise<{ count: number }>;
       moveToNextMonitor: () => Promise<{ success: boolean; error?: string }>;
+    };
+    textHighlightAPI: {
+      onBoxes: (cb: (payload: { boxes: TextHighlightBox[]; ttlMs?: number }) => void) => () => void;
+      onClear: (cb: () => void) => () => void;
+      onLoading: (cb: (payload: { loading: boolean }) => void) => () => void;
+      onTranscription: (cb: (payload: { text: string; mode: 'local' | 'ai'; createdAt: number }) => void) => () => void;
+      getLastTranscription: () => Promise<{ text: string; mode: 'local' | 'ai'; createdAt: number } | null>;
+      getMode: () => Promise<{ mode: 'local' | 'ai' }>;
+      setMode: (mode: 'local' | 'ai') => Promise<{ mode: 'local' | 'ai' }>;
     };
     electron: {
       ipcRenderer: {

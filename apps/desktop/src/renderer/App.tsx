@@ -7,6 +7,7 @@ import { HUDDropdown } from './components/HUD/HUDDropdown';
 import { CommandBar } from './components/CommandBar/CommandBar';
 import { VintageWindow } from './components/HUD/VintageWindow';
 import { MiniHUD } from './components/HUD/MiniHUD';
+import { TextHighlightOutput } from './components/TextHighlightOverlay/TextHighlightOutput';
 import { initSttStore } from './store/sttStore';
 import './styles/global.css';
 
@@ -49,6 +50,7 @@ function App(): JSX.Element {
                     onOpenSessionPanel={() => window.electron.ipcRenderer.send('window:open-session')}
                     onStartListening={() => window.electron.ipcRenderer.send('session:start-listening')}
                     isListening={false} // Todo: Sync via IPC
+                    onTriggerTextHighlight={() => window.electron.ipcRenderer.send('hud:trigger-text-highlight')}
                 />
             </div>
         );
@@ -87,6 +89,10 @@ function App(): JSX.Element {
             alignItems: 'center',
             background: 'transparent'
         }}><MiniHUD /></div>);
+    }
+
+    if (route === '#text-highlight-output') {
+        return <TextHighlightOutput />;
     }
 
         // Default to OverlayContainer (Main Session Window)

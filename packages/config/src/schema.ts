@@ -24,6 +24,8 @@ export const AppConfigSchema = z.object({
     screenshot: z.string().default('CommandOrControl+Alt+S'),
     presentationMode: z.string().default('CommandOrControl+Alt+P'),
     panicMode: z.string().default('CommandOrControl+Alt+H'), // Botão de pânico
+    textHighlight: z.string().default('Ctrl+E'),
+    textHighlightClear: z.string().default('Escape'),
   }),
   stt: z.object({
     provider: z.enum(['sherpa', 'whisper', 'vosk']).default('whisper'),
@@ -40,6 +42,7 @@ export const AppConfigSchema = z.object({
     savePath: z.string().default(''),
     format: z.enum(['png', 'jpg']).default('png'),
     quality: z.number().min(0).max(100).default(90),
+    ocrMode: z.enum(['local', 'ai']).default('local'),
   }),
 });
 
@@ -63,6 +66,8 @@ export const defaultConfig: AppConfig = {
     screenshot: 'CommandOrControl+Alt+S',
     presentationMode: 'CommandOrControl+Alt+P',
     panicMode: 'CommandOrControl+Alt+H', // Botão de pânico
+    textHighlight: 'Ctrl+E',
+    textHighlightClear: 'Escape',
   },
   stt: {
     provider: 'whisper',
@@ -78,6 +83,6 @@ export const defaultConfig: AppConfig = {
     savePath: '',
     format: 'png',
     quality: 90,
+    ocrMode: 'local',
   },
 };
-

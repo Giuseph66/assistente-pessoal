@@ -206,6 +206,32 @@ const translationApi = {
     },
 }
 
+const textHighlightApi = {
+    onBoxes: (cb: (payload: any) => void) => {
+        const listener = (_event: any, payload: any) => cb(payload)
+        ipcRenderer.on('text-highlight:setBoxes', listener)
+        return () => ipcRenderer.removeListener('text-highlight:setBoxes', listener)
+    },
+    onClear: (cb: () => void) => {
+        const listener = () => cb()
+        ipcRenderer.on('text-highlight:clear', listener)
+        return () => ipcRenderer.removeListener('text-highlight:clear', listener)
+    },
+    onLoading: (cb: (payload: { loading: boolean }) => void) => {
+        const listener = (_event: any, payload: { loading: boolean }) => cb(payload)
+        ipcRenderer.on('text-highlight:loading', listener)
+        return () => ipcRenderer.removeListener('text-highlight:loading', listener)
+    },
+    onTranscription: (cb: (payload: { text: string; mode: 'local' | 'ai'; createdAt: number }) => void) => {
+        const listener = (_event: any, payload: { text: string; mode: 'local' | 'ai'; createdAt: number }) => cb(payload)
+        ipcRenderer.on('text-highlight:transcription', listener)
+        return () => ipcRenderer.removeListener('text-highlight:transcription', listener)
+    },
+    getLastTranscription: () => ipcRenderer.invoke('text-highlight:getLastTranscription'),
+    getMode: () => ipcRenderer.invoke('text-highlight:getMode'),
+    setMode: (mode: 'local' | 'ai') => ipcRenderer.invoke('text-highlight:setMode', mode),
+}
+
 const aiApi = {
     getConfig: () => ipcRenderer.invoke('ai.getConfig'),
     saveConfig: (config: any) => ipcRenderer.invoke('ai.saveConfig', config),
@@ -265,6 +291,7 @@ if (process.contextIsolated) {
         contextBridge.exposeInMainWorld('systemStt', systemSttApi)
         contextBridge.exposeInMainWorld('overlay', overlayApi)
         contextBridge.exposeInMainWorld('translation', translationApi)
+        contextBridge.exposeInMainWorld('textHighlightAPI', textHighlightApi)
         contextBridge.exposeInMainWorld('ai', aiApi)
         contextBridge.exposeInMainWorld('permissions', permissionsApi)
     } catch (error) {
@@ -291,6 +318,8 @@ if (process.contextIsolated) {
     window.overlay = overlayApi
     // @ts-ignore (define in dts)
     window.translation = translationApi
+    // @ts-ignore (define in dts)
+    window.textHighlightAPI = textHighlightApi
     // @ts-ignore (define in dts)
     window.ai = aiApi
     // @ts-ignore (define in dts)

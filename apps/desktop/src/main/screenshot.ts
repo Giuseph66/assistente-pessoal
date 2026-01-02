@@ -30,6 +30,7 @@ export interface ScreenshotResult {
   path?: string;
   width?: number;
   height?: number;
+  screenshotId?: number;
   region?: {
     x: number;
     y: number;
@@ -207,7 +208,7 @@ export async function captureScreenshot(
 
     // Salva no database
     if (db) {
-      db.saveScreenshot({
+      const screenshotId = db.saveScreenshot({
         file_path: filePath,
         file_size: fileStats.size,
         width: finalWidth,
@@ -217,6 +218,14 @@ export async function captureScreenshot(
         monitor_index: options.monitorIndex,
         created_at: Date.now(),
       });
+      logger.info({ filePath, width: finalWidth, height: finalHeight, screenshotId }, 'Screenshot saved');
+      return {
+        success: true,
+        path: filePath,
+        width: finalWidth,
+        height: finalHeight,
+        screenshotId,
+      };
     }
 
     logger.info({ filePath, width: finalWidth, height: finalHeight }, 'Screenshot saved');
@@ -368,7 +377,7 @@ export async function captureAreaInteractive(db?: DatabaseManager): Promise<Scre
     const fileStats = await import('fs/promises').then((fs) => fs.stat(filePath));
 
     if (db) {
-      db.saveScreenshot({
+      const screenshotId = db.saveScreenshot({
         file_path: filePath,
         file_size: fileStats.size,
         width,
@@ -378,6 +387,15 @@ export async function captureAreaInteractive(db?: DatabaseManager): Promise<Scre
         monitor_index: undefined,
         created_at: Date.now(),
       });
+      logger.info({ filePath, width, height, screenshotId }, 'Screenshot saved (interactive)');
+      return {
+        success: true,
+        path: filePath,
+        width,
+        height,
+        region: region || undefined,
+        screenshotId,
+      };
     }
 
     logger.info({ filePath, width, height }, 'Screenshot saved (interactive)');

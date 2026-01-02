@@ -7,6 +7,8 @@ import { extname } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { setupErrorHandlers, setShuttingDown } from './error-handler'
 import { getOverlayManager } from './overlay'
+import { getTextHighlightOverlayManager } from './text-highlight-overlay'
+import { runTextHighlight, getTextHighlightMode, setTextHighlightMode, getLastTextHighlightTranscription } from './text-highlight-controller'
 import { getHotkeysManager } from './hotkeys'
 import { getConfigManager } from '@ricky/config'
 import { getLogger } from '@ricky/logger'
@@ -115,6 +117,34 @@ app.whenReady().then(async () => {
 
     // Create overlay window
     const overlayManager = getOverlayManager();
+   // (TextHighlightOverlayManager already initialized above)
+
+   // Text Highlight Overlay Manager (OCR) initialization
+   const thManager = getTextHighlightOverlayManager();
+   await thManager.initialize();
+
+   ipcMain.handle('text-highlight:getMode', async () => {
+     return { mode: getTextHighlightMode() };
+   });
+
+   ipcMain.handle('text-highlight:setMode', async (_event, mode: 'local' | 'ai') => {
+     const nextMode = setTextHighlightMode(mode);
+     return { mode: nextMode };
+   });
+
+   ipcMain.handle('text-highlight:getLastTranscription', async () => {
+     return getLastTextHighlightTranscription();
+   });
+
+   // Listen for HUD trigger to start OCR overlay
+   ipcMain.on('hud:trigger-text-highlight', async () => {
+     logger.info('HUD: trigger-text-highlight received');
+     try {
+       await runTextHighlight();
+     } catch (err) {
+       logger.error({ err }, 'TextHighlightOverlay: failed to highlight from HUD');
+     }
+   });
 
     // Register overlay IPC handlers BEFORE creating window to ensure they're available
     // IPC handlers for overlay

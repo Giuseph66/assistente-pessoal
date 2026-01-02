@@ -13,6 +13,7 @@ interface HUDProps {
     activeAssistant?: string;
     sessionId?: number | null;
     onSessionSelect?: (sessionId: number) => void;
+    onTriggerTextHighlight?: () => void;
 }
 
 interface Session {
@@ -39,7 +40,8 @@ export const HUD: React.FC<HUDProps> = ({
     isListening,
     activeAssistant = 'My IA',
     sessionId,
-    onSessionSelect
+    onSessionSelect,
+    onTriggerTextHighlight
 }) => {
     const [inputValue, setInputValue] = useSharedInputValue();
     const [hudPartial, setHudPartial] = useState('');
@@ -50,6 +52,7 @@ export const HUD: React.FC<HUDProps> = ({
     const [activePersonality, setActivePersonality] = useState<Personality | null>(null);
     const [activeSessionId, setActiveSessionId] = useState<number | null>(sessionId ?? null);
     const [isSendingQuestion, setIsSendingQuestion] = useState(false);
+    const [isTextHighlightLoading, setIsTextHighlightLoading] = useState(false);
     
     // Estado para feedback visual quando sobre a janela vintage
     const [isOverVintageWindow, setIsOverVintageWindow] = useState(false);
@@ -123,6 +126,15 @@ export const HUD: React.FC<HUDProps> = ({
             await fetchSessions();
         };
         fetchData();
+    }, []);
+
+    useEffect(() => {
+        const offLoading = window.textHighlightAPI?.onLoading((payload) => {
+            setIsTextHighlightLoading(Boolean(payload?.loading));
+        });
+        return () => {
+            offLoading?.();
+        };
     }, []);
 
     useEffect(() => {
@@ -428,6 +440,20 @@ export const HUD: React.FC<HUDProps> = ({
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                             <path d="M12 8v4l3 3m6-3a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
                         </svg>
+                    </button>
+                    <button
+                        onClick={onTriggerTextHighlight}
+                        title="Marcar texto com OCR (Modo B)"
+                        className={`icon-btn ${isTextHighlightLoading ? 'is-loading' : ''}`}
+                        disabled={isTextHighlightLoading}
+                    >
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <path d="M4 6h16" />
+                          <path d="M4 12h16" />
+                          <path d="M4 18h10" />
+                          <path d="M6 4h0" />
+                        </svg>
+                        {isTextHighlightLoading ? <span className="icon-btn__spinner" aria-hidden="true" /> : null}
                     </button>
                     <button onClick={onOpenSessionPanel} title="Painel da Sessão" className="icon-btn">
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">

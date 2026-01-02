@@ -531,6 +531,7 @@ export class OverlayManager {
   private hudWindow: BrowserWindow | null = null;
   private settingsWindow: BrowserWindow | null = null;
   private historyWindow: BrowserWindow | null = null;
+  private textHighlightOutputWindow: BrowserWindow | null = null;
   private commandBarWindow: BrowserWindow | null = null;
   private hudDropdownWindow: BrowserWindow | null = null;
   private vintageWindow: BrowserWindow | null = null;
@@ -799,6 +800,48 @@ export class OverlayManager {
   }
 
   /**
+   * Mostra a janela de Transcrição OCR
+   */
+  showTextHighlightOutputWindow(): void {
+    if (this.textHighlightOutputWindow && !this.textHighlightOutputWindow.isDestroyed()) {
+      this.textHighlightOutputWindow.show();
+      this.textHighlightOutputWindow.focus();
+      return;
+    }
+
+    this.textHighlightOutputWindow = new BrowserWindow({
+      width: 820,
+      height: 620,
+      frame: false,
+      transparent: true,
+      backgroundColor: '#00000000',
+      webPreferences: {
+        preload: join(__dirname, '../preload/index.js'),
+        nodeIntegration: false,
+        contextIsolation: true,
+        sandbox: false,
+      }
+    });
+
+    this.textHighlightOutputWindow.setMenuBarVisibility(false);
+
+    if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
+      this.textHighlightOutputWindow.loadURL(`${process.env['ELECTRON_RENDERER_URL']}#text-highlight-output`);
+    } else {
+      this.textHighlightOutputWindow.loadFile(join(__dirname, '../renderer/index.html'), { hash: 'text-highlight-output' });
+    }
+
+    this.textHighlightOutputWindow.on('closed', () => { this.textHighlightOutputWindow = null; });
+  }
+
+  /**
+   * Obtém a janela de Transcrição OCR
+   */
+  getTextHighlightOutputWindow(): BrowserWindow | null {
+    return this.textHighlightOutputWindow;
+  }
+
+  /**
    * Cria a janela Command Bar (Spotlight style)
    */
   createCommandBarWindow(): void {
@@ -966,6 +1009,7 @@ export class OverlayManager {
     if (this.hudWindow) this.hudWindow.destroy();
     if (this.settingsWindow) this.settingsWindow.destroy();
     if (this.historyWindow) this.historyWindow.destroy();
+    if (this.textHighlightOutputWindow) this.textHighlightOutputWindow.destroy();
     if (this.commandBarWindow) this.commandBarWindow.destroy();
     if (this.hudDropdownWindow) this.hudDropdownWindow.destroy();
     if (this.vintageWindow) this.vintageWindow.destroy();
@@ -1437,6 +1481,7 @@ export class OverlayManager {
     checkAndClose(this.overlayWindow, 'overlay');
     checkAndClose(this.settingsWindow, 'settings');
     checkAndClose(this.historyWindow, 'history');
+    checkAndClose(this.textHighlightOutputWindow, 'text-highlight-output');
     checkAndClose(this.commandBarWindow, 'command-bar');
 
     this.hideVintageWindow();
@@ -1506,6 +1551,14 @@ export class OverlayManager {
         this.createHistoryWindow();
       } else {
         this.historyWindow.show();
+      }
+    }
+
+    if (this.previouslyVisibleWindows.has('text-highlight-output')) {
+      if (!this.textHighlightOutputWindow || this.textHighlightOutputWindow.isDestroyed()) {
+        this.showTextHighlightOutputWindow();
+      } else {
+        this.textHighlightOutputWindow.show();
       }
     }
     
