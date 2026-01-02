@@ -1,3 +1,4 @@
+
 import Store from 'electron-store';
 import { AIConfig } from '@ricky/shared';
 
@@ -41,5 +42,6 @@ export function getAIConfigStore(): AIConfigStore {
   }
   return aiConfigStore;
 }
+
 
 
