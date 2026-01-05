@@ -389,6 +389,16 @@ export class AIService {
       }
 
       try {
+        const resolvedMaxTokens = this.resolveMaxTokens(requestOptions?.maxTokens);
+        const options: VisionRequest['options'] = {
+          temperature: requestOptions?.temperature ?? 0.7,
+          timeoutMs: this.config.timeoutMs,
+          modelName: this.config.modelName,
+        };
+        if (typeof resolvedMaxTokens === 'number') {
+          options.maxTokens = resolvedMaxTokens;
+        }
+
         // Prepara request
         const visionRequest: VisionRequest = {
           image: {
@@ -398,12 +408,7 @@ export class AIService {
             originalPath: image.sourcePath,
           },
           messages,
-          options: {
-            temperature: requestOptions?.temperature ?? 0.7,
-            maxTokens: requestOptions?.maxTokens ?? 2048,
-            timeoutMs: this.config.timeoutMs,
-            modelName: this.config.modelName,
-          },
+          options,
         };
 
         // Chama provider
@@ -480,14 +485,19 @@ export class AIService {
       }
 
       try {
+        const resolvedMaxTokens = this.resolveMaxTokens(requestOptions?.maxTokens);
+        const options: VisionRequest['options'] = {
+          temperature: requestOptions?.temperature ?? 0.7,
+          timeoutMs: this.config.timeoutMs,
+          modelName: this.config.modelName,
+        };
+        if (typeof resolvedMaxTokens === 'number') {
+          options.maxTokens = resolvedMaxTokens;
+        }
+
         const chatRequest = {
           messages,
-          options: {
-            temperature: requestOptions?.temperature ?? 0.7,
-            maxTokens: requestOptions?.maxTokens ?? 2048,
-            timeoutMs: this.config.timeoutMs,
-            modelName: this.config.modelName,
-          },
+          options,
         };
 
         const response = await provider.analyzeText(chatRequest, apiKey.key);
@@ -527,24 +537,26 @@ export class AIService {
    * Extrai texto de um screenshot (atalho para OCR)
    */
   async extractText(screenshotId: number): Promise<string> {
-    const maxTokens = this.getExtractTextMaxTokens();
+    const maxTokens = this.resolveMaxTokens();
     const response = await this.analyzeScreenshot({
       screenshotId,
       prompt: '',
       mode: 'extract_text',
-      options: { maxTokens },
+      options: typeof maxTokens === 'number' ? { maxTokens } : undefined,
     });
 
     if (!response.success || !response.response) {
       throw new Error(response.error || 'Failed to extract text');
     }
 
-    const tokensOut = response.response.usage?.tokensOut;
-    if (typeof tokensOut === 'number' && tokensOut >= maxTokens - 16) {
-      logger.warn(
-        { tokensOut, maxTokens },
-        'ExtractText output near token limit (may be truncated)'
-      );
+    if (typeof maxTokens === 'number') {
+      const tokensOut = response.response.usage?.tokensOut;
+      if (typeof tokensOut === 'number' && tokensOut >= maxTokens - 16) {
+        logger.warn(
+          { tokensOut, maxTokens },
+          'ExtractText output near token limit (may be truncated)'
+        );
+      }
     }
 
     return response.response.recognizedText || response.response.answerText;
@@ -571,14 +583,6 @@ export class AIService {
     return message;
   }
 
-  private getExtractTextMaxTokens(): number {
-    const catalog = this.getModelMaxTokens();
-    if (typeof catalog === 'number' && Number.isFinite(catalog) && catalog > 0) {
-      return Math.floor(catalog);
-    }
-    return 4096;
-  }
-
   private getModelMaxTokens(): number | null {
     try {
       const catalog = loadModelCatalog();
@@ -590,5 +594,20 @@ export class AIService {
       logger.warn({ err: error }, 'Failed to resolve model max tokens');
       return null;
     }
+  }
+
+  private resolveMaxTokens(maxTokens?: number): number | undefined {
+    if (typeof maxTokens === 'number' && Number.isFinite(maxTokens) && maxTokens > 0) {
+      return Math.floor(maxTokens);
+    }
+    const modelMaxTokens = this.getModelMaxTokens();
+    if (
+      typeof modelMaxTokens === 'number' &&
+      Number.isFinite(modelMaxTokens) &&
+      modelMaxTokens > 0
+    ) {
+      return Math.floor(modelMaxTokens);
+    }
+    return undefined;
   }
 }

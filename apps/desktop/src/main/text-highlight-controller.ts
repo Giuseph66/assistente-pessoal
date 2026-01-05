@@ -5,6 +5,7 @@ import { getOverlayManager } from './overlay';
 import { DatabaseManager } from './database';
 import { captureAreaInteractiveConfirmed, captureScreenshot } from './screenshot';
 import { getAIService } from './ai/AIServiceManager';
+import { AIProviderId } from '@ricky/shared';
 
 export type TextHighlightMode = 'local' | 'ai';
 export type TextHighlightCaptureMode = 'fullscreen' | 'area';
@@ -13,6 +14,7 @@ export type TextHighlightTranscription = {
   text: string;
   mode: TextHighlightMode;
   createdAt: number;
+  providerId?: AIProviderId;
 };
 
 const logger = getLogger();
@@ -194,7 +196,8 @@ export async function runTextHighlight(modeOverride?: TextHighlightMode): Promis
         logger.warn('TextHighlight: no text detected (ai)');
         return null;
       }
-      const payload = { text, mode, createdAt: Date.now() };
+      const providerId = aiService.getConfig().providerId as AIProviderId;
+      const payload = { text, mode, createdAt: Date.now(), providerId };
       publishTranscription(payload);
       return payload;
     } catch (error) {

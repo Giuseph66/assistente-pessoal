@@ -23,6 +23,16 @@ import {
   AnalyzeChatResponse,
   PromptTemplate,
   TextHighlightBox,
+  AutomationConfig,
+  MappingPoint,
+  ImageTemplate,
+  Workflow,
+  ExecutionStatus,
+  AutomationAction,
+  WorkflowGraph,
+  FlowExecutionStatus,
+  FlowExecutionNodeStartedEvent,
+  FlowExecutionNodeFinishedEvent,
 } from '@ricky/shared';
 
 declare global {
@@ -111,7 +121,8 @@ declare global {
       savePromptTemplate: (template: Omit<PromptTemplate, 'id' | 'created_at' | 'updated_at'>) => Promise<{ success: boolean; id: number }>;
       getPromptTemplates: (category?: string) => Promise<Array<{ id: number; name: string; promptText: string; category?: string; createdAt: number; updatedAt: number }>>;
       deletePromptTemplate: (id: number) => Promise<{ success: boolean }>;
-      onAnalysisStarted: (cb: (event: { mode: 'screenshot' | 'chat'; screenshotId?: number; sessionId?: number; startedAt?: number; timeoutMs?: number }) => void) => () => void;
+      getActivePersonality: () => Promise<{ promptId: number } | null>;
+      onAnalysisStarted: (cb: (event: { mode: 'screenshot' | 'chat'; screenshotId?: number; sessionId?: number; startedAt?: number; timeoutMs?: number; prompt?: string }) => void) => () => void;
       onAnalysisCompleted: (cb: (event: { mode: 'screenshot' | 'chat'; screenshotId?: number; sessionId?: number; success: boolean; usage?: { tokensIn?: number; tokensOut?: number }; model?: string; provider?: string }) => void) => () => void;
       onAnalysisError: (cb: (event: { mode: 'screenshot' | 'chat'; screenshotId?: number; sessionId?: number; error: string }) => void) => () => void;
     };
@@ -151,6 +162,71 @@ declare global {
       setMode: (mode: 'local' | 'ai') => Promise<{ mode: 'local' | 'ai' }>;
       getCaptureMode: () => Promise<{ mode: 'fullscreen' | 'area' }>;
       setCaptureMode: (mode: 'fullscreen' | 'area') => Promise<{ mode: 'fullscreen' | 'area' }>;
+    };
+    automation: {
+      getConfig: () => Promise<AutomationConfig>;
+      saveConfig: (config: Partial<AutomationConfig>) => Promise<AutomationConfig>;
+      startMappingMode: () => Promise<{ success: boolean }>;
+      stopMappingMode: () => Promise<{ success: boolean }>;
+      isMappingMode: () => Promise<boolean>;
+      recordClick: (x: number, y: number, name: string, type?: string) => Promise<MappingPoint>;
+      captureTemplate: (name: string, region?: { x: number; y: number; width: number; height: number }) => Promise<ImageTemplate>;
+      captureTemplateInteractive: () => Promise<{ success: boolean; path?: string; region?: { x: number; y: number; width: number; height: number }; error?: string }>;
+      listMappings: () => Promise<{ points: MappingPoint[]; templates: ImageTemplate[] }>;
+      getMappingPoint: (id: string) => Promise<MappingPoint | undefined>;
+      updateMappingPoint: (id: string, updates: Partial<Omit<MappingPoint, 'id' | 'createdAt'>>) => Promise<MappingPoint | null>;
+      deleteMapping: (id: string, type: 'point' | 'template') => Promise<{ success: boolean }>;
+      getImageTemplate: (id: string) => Promise<ImageTemplate | undefined>;
+      importImageTemplate: (name: string, dataUrl: string) => Promise<ImageTemplate>;
+      updateImageTemplate: (id: string, updates: Partial<Omit<ImageTemplate, 'id' | 'createdAt'>>) => Promise<ImageTemplate | null>;
+      resizeImageTemplate: (id: string, size: { width?: number; height?: number; keepAspect?: boolean }) => Promise<ImageTemplate | null>;
+      replaceImageTemplate: (id: string, dataUrl: string) => Promise<ImageTemplate | null>;
+      cropImageTemplate: (id: string, rect: { x: number; y: number; width: number; height: number }) => Promise<ImageTemplate | null>;
+      findTemplateOnScreen: (templateName: string, confidence?: number, timeout?: number) => Promise<{ x: number; y: number; width: number; height: number } | null>;
+      createWorkflow: (workflow: Omit<Workflow, 'id' | 'createdAt' | 'updatedAt'>) => Promise<Workflow>;
+      updateWorkflow: (id: string, workflow: Partial<Omit<Workflow, 'id' | 'createdAt'>>) => Promise<Workflow | null>;
+      deleteWorkflow: (id: string) => Promise<boolean>;
+      listWorkflows: () => Promise<Workflow[]>;
+      getWorkflow: (id: string) => Promise<Workflow | undefined>;
+      executeWorkflow: (workflowId: string) => Promise<{ success: boolean; error?: string }>;
+      pauseExecution: () => Promise<{ success: boolean }>;
+      resumeExecution: () => Promise<{ success: boolean }>;
+      stopExecution: () => Promise<{ success: boolean }>;
+      getExecutionStatus: () => Promise<ExecutionStatus>;
+      testAction: (action: AutomationAction) => Promise<{ success: boolean; error?: string }>;
+      getMousePosition: () => Promise<{ x: number; y: number }>;
+      getScreenSize: () => Promise<{ width: number; height: number }>;
+      onExecutionStarted: (cb: (event: any) => void) => () => void;
+      onExecutionCompleted: (cb: (event: any) => void) => () => void;
+      onExecutionError: (cb: (event: any) => void) => () => void;
+      onExecutionProgress: (cb: (event: any) => void) => () => void;
+      onExecutionStatus: (cb: (status: ExecutionStatus) => void) => () => void;
+      onMappingModeChanged: (cb: (event: { active: boolean }) => void) => () => void;
+      onMappingPointAdded: (cb: (point: MappingPoint) => void) => () => void;
+      onTemplateAdded: (cb: (template: ImageTemplate) => void) => () => void;
+      onTemplateUpdated: (cb: (template: ImageTemplate) => void) => () => void;
+      onTemplateDeleted: (cb: (data: { id: string }) => void) => () => void;
+      onPointCaptured: (cb: (data: { x: number; y: number }) => void) => (() => void) | undefined;
+      onTemplateCaptured: (cb: (data: { region: { x: number; y: number; width: number; height: number }; screenshotPath?: string }) => void) => (() => void) | undefined;
+      onMappingError: (cb: (data: { message: string }) => void) => (() => void) | undefined;
+      recordPointFromHotkey: (x: number, y: number, name: string, type?: string) => Promise<MappingPoint>;
+      recordTemplateFromHotkey: (name: string, region: { x: number; y: number; width: number; height: number }, screenshotPath?: string) => Promise<ImageTemplate>;
+      onWorkflowCreated: (cb: (workflow: Workflow) => void) => () => void;
+      flow: {
+        listWorkflows: () => Promise<WorkflowGraph[]>;
+        getWorkflow: (id: string) => Promise<WorkflowGraph | undefined>;
+        saveWorkflow: (graph: WorkflowGraph) => Promise<WorkflowGraph>;
+        deleteWorkflow: (id: string) => Promise<boolean>;
+        validateWorkflow: (graph: WorkflowGraph) => Promise<{ errors: any[]; warnings: any[] }>;
+        runWorkflow: (id: string) => Promise<{ success: boolean; error?: string }>;
+        pause: () => Promise<{ success: boolean }>;
+        resume: () => Promise<{ success: boolean }>;
+        stop: () => Promise<{ success: boolean }>;
+        getExecutionStatus: () => Promise<FlowExecutionStatus>;
+        onStatus: (cb: (status: FlowExecutionStatus) => void) => () => void;
+        onNodeStarted: (cb: (data: FlowExecutionNodeStartedEvent) => void) => () => void;
+        onNodeFinished: (cb: (data: FlowExecutionNodeFinishedEvent) => void) => () => void;
+      };
     };
     electron: {
       ipcRenderer: {

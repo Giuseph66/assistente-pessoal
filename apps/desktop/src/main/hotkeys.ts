@@ -1,4 +1,4 @@
-import { globalShortcut, app } from 'electron';
+import { globalShortcut, app, BrowserWindow } from 'electron';
 import { getConfigManager } from '@ricky/config';
 import { getLogger } from '@ricky/logger';
 import { getOverlayManager } from './overlay';
@@ -6,6 +6,8 @@ import { getSttController } from './stt/sttService';
 import { captureAreaInteractiveConfirmed } from './screenshot';
 import { runTextHighlight } from './text-highlight-controller';
 import { getTextHighlightOverlayManager } from './text-highlight-overlay';
+import { getSharedSttText, clearSharedSttText, hasSharedSttText } from './storage/sharedInputStore';
+import { getAutomationService } from './automation/AutomationService';
 
 const logger = getLogger();
 const config = getConfigManager();
@@ -130,24 +132,53 @@ export class HotkeysManager {
       }
     }
 
+    // Paste STT text to external application
+    // Hotkey: Ctrl+Shift+. (ou Cmd+Shift+. no macOS)
+    // Usar "." ao invés de "Period" para garantir que o accelerator é aceito.
+    const pasteSttHotkey = (hotkeys as any).pasteSttText ?? 'CommandOrControl+Shift+.';
+    this.register(pasteSttHotkey, async () => {
+      logger.debug('Hotkey: paste STT text to external app');
+      
+      const text = getSharedSttText();
+      logger.debug({ textLength: text?.length || 0, hasText: hasSharedSttText(), preview: text?.substring(0, 30) }, 'Checking STT text');
+      
+      if (!text || text.trim() === '') {
+        logger.debug('No STT text to paste');
+        return;
+      }
+
+      try {
+        logger.debug({ textLength: text.length }, 'Starting paste operation');
+        
+        // Usa o AutomationService para colar o texto
+        const automationService = getAutomationService();
+        await automationService.pasteText(text);
+
+        logger.info({ textLength: text.length }, 'STT text pasted to external app');
+      } catch (error) {
+        logger.error({ err: error }, 'Failed to paste STT text to external app');
+      }
+    });
+
     logger.info('Hotkeys registered');
   }
 
   /**
    * Registra uma hotkey específica
    */
-  register(accelerator: string, callback: () => void): boolean {
+  register(accelerator: string, callback: () => void | Promise<void>): boolean {
     // Remove hotkey anterior se existir
     if (this.registeredHotkeys.has(accelerator)) {
       globalShortcut.unregister(accelerator);
     }
 
     const success = globalShortcut.register(accelerator, () => {
-      try {
-        callback();
-      } catch (error) {
-        logger.error({ err: error, accelerator }, 'Error in hotkey callback');
-      }
+      // Executar callback e tratar promises rejeitadas
+      Promise.resolve()
+        .then(() => callback())
+        .catch((error) => {
+          logger.error({ err: error, accelerator }, 'Error in hotkey callback');
+        });
     });
 
     if (success) {

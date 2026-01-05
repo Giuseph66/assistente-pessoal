@@ -12,6 +12,8 @@ export * from './subtitles/types.js';
 export * from './translation/types.js';
 export * from './ai/types.js';
 export * from './textHighlight/types.js';
+export * from './automation/types.js';
+export * from './automation/flowTypes.js';
 
 export enum IpcChannels {
     OVERLAY_TOGGLE = 'overlay.toggle',

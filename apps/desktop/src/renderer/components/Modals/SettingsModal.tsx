@@ -9,6 +9,7 @@ import { ShortcutsSection } from './SettingsSections/ShortcutsSection';
 import { AIPromptsSection } from './SettingsSections/AIPromptsSection';
 import { DashboardSection } from './SettingsSections/DashboardSection';
 import { HelpSection } from './SettingsSections/HelpSection';
+import { AutomationSettings } from '../../pages/Settings/AutomationSettings';
 import './SettingsModal.css';
 import { getFeaturePermission } from '../../utils/featurePermissions';
 
@@ -26,6 +27,7 @@ type SettingsSection =
     | 'privacy'
     | 'ai-prompts'
     | 'dashboard'
+    | 'automation'
     | 'help';
 
 
@@ -368,6 +370,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
                 return <AIPromptsSection showToast={showToast} />;
             case 'dashboard':
                 return <DashboardSection />;
+            case 'automation':
+                return <AutomationSettings />;
         }
     };
 
@@ -427,6 +431,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
                         <button className={`sidebar-item ${activeSection === 'dashboard' ? 'active' : ''}`} onClick={() => setActiveSection('dashboard')}>
                             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2" /><line x1="3" y1="9" x2="21" y2="9" /><line x1="9" y1="21" x2="9" y2="9" /></svg>
                             Dashboard
+                        </button>
+                        <button className={`sidebar-item ${activeSection === 'automation' ? 'active' : ''}`} onClick={() => setActiveSection('automation')}>
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="2" y="3" width="20" height="14" rx="2" ry="2" /><line x1="8" y1="21" x2="16" y2="21" /><line x1="12" y1="17" x2="12" y2="21" /></svg>
+                            Automação
                         </button>{/*
                             <button className={`sidebar-item ${activeSection === 'premium' ? 'active' : ''}`} onClick={() => setActiveSection('premium')}>
                             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" /></svg>

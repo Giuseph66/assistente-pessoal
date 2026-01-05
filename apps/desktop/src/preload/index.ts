@@ -278,6 +278,140 @@ const permissionsApi = {
     openSystemSettings: () => ipcRenderer.invoke('permissions:openSystemSettings'),
 }
 
+const automationApi = {
+    getConfig: () => ipcRenderer.invoke('automation.getConfig'),
+    saveConfig: (config: any) => ipcRenderer.invoke('automation.saveConfig', config),
+    startMappingMode: () => ipcRenderer.invoke('automation.startMappingMode'),
+    stopMappingMode: () => ipcRenderer.invoke('automation.stopMappingMode'),
+    isMappingMode: () => ipcRenderer.invoke('automation.isMappingMode'),
+    recordClick: (x: number, y: number, name: string, type?: string) => ipcRenderer.invoke('automation.recordClick', { x, y, name, type }),
+    captureTemplate: (name: string, region?: any) => ipcRenderer.invoke('automation.captureTemplate', { name, region }),
+    captureTemplateInteractive: () => ipcRenderer.invoke('automation.captureTemplateInteractive'),
+    listMappings: () => ipcRenderer.invoke('automation.listMappings'),
+    getMappingPoint: (id: string) => ipcRenderer.invoke('automation.getMappingPoint', id),
+    updateMappingPoint: (id: string, updates: any) => ipcRenderer.invoke('automation.updateMappingPoint', { id, updates }),
+    deleteMapping: (id: string, type: 'point' | 'template') => ipcRenderer.invoke('automation.deleteMapping', { id, type }),
+    getImageTemplate: (id: string) => ipcRenderer.invoke('automation.getImageTemplate', id),
+    importImageTemplate: (name: string, dataUrl: string) => ipcRenderer.invoke('automation.importImageTemplate', { name, dataUrl }),
+    updateImageTemplate: (id: string, updates: any) => ipcRenderer.invoke('automation.updateImageTemplate', { id, updates }),
+    resizeImageTemplate: (id: string, size: { width?: number; height?: number; keepAspect?: boolean }) => ipcRenderer.invoke('automation.resizeImageTemplate', { id, ...size }),
+    replaceImageTemplate: (id: string, dataUrl: string) => ipcRenderer.invoke('automation.replaceImageTemplate', { id, dataUrl }),
+    cropImageTemplate: (id: string, rect: { x: number; y: number; width: number; height: number }) => ipcRenderer.invoke('automation.cropImageTemplate', { id, rect }),
+    findTemplateOnScreen: (templateName: string, confidence?: number, timeout?: number) => ipcRenderer.invoke('automation.findTemplateOnScreen', { templateName, confidence, timeout }),
+    createWorkflow: (workflow: any) => ipcRenderer.invoke('automation.createWorkflow', workflow),
+    updateWorkflow: (id: string, workflow: any) => ipcRenderer.invoke('automation.updateWorkflow', { id, workflow }),
+    deleteWorkflow: (id: string) => ipcRenderer.invoke('automation.deleteWorkflow', id),
+    listWorkflows: () => ipcRenderer.invoke('automation.listWorkflows'),
+    getWorkflow: (id: string) => ipcRenderer.invoke('automation.getWorkflow', id),
+    executeWorkflow: (workflowId: string) => ipcRenderer.invoke('automation.executeWorkflow', workflowId),
+    pauseExecution: () => ipcRenderer.invoke('automation.pauseExecution'),
+    resumeExecution: () => ipcRenderer.invoke('automation.resumeExecution'),
+    stopExecution: () => ipcRenderer.invoke('automation.stopExecution'),
+    getExecutionStatus: () => ipcRenderer.invoke('automation.getExecutionStatus'),
+    testAction: (action: any) => ipcRenderer.invoke('automation.testAction', action),
+    getMousePosition: () => ipcRenderer.invoke('automation.getMousePosition'),
+    getScreenSize: () => ipcRenderer.invoke('automation.getScreenSize'),
+    onExecutionStarted: (cb: (event: any) => void) => {
+        const listener = (_event: any, payload: any) => cb(payload)
+        ipcRenderer.on('automation.execution.started', listener)
+        return () => ipcRenderer.removeListener('automation.execution.started', listener)
+    },
+    onExecutionCompleted: (cb: (event: any) => void) => {
+        const listener = (_event: any, payload: any) => cb(payload)
+        ipcRenderer.on('automation.execution.completed', listener)
+        return () => ipcRenderer.removeListener('automation.execution.completed', listener)
+    },
+    onExecutionError: (cb: (event: any) => void) => {
+        const listener = (_event: any, payload: any) => cb(payload)
+        ipcRenderer.on('automation.execution.error', listener)
+        return () => ipcRenderer.removeListener('automation.execution.error', listener)
+    },
+    onExecutionProgress: (cb: (event: any) => void) => {
+        const listener = (_event: any, payload: any) => cb(payload)
+        ipcRenderer.on('automation.execution.progress', listener)
+        return () => ipcRenderer.removeListener('automation.execution.progress', listener)
+    },
+    onExecutionStatus: (cb: (event: any) => void) => {
+        const listener = (_event: any, payload: any) => cb(payload)
+        ipcRenderer.on('automation.execution.status', listener)
+        return () => ipcRenderer.removeListener('automation.execution.status', listener)
+    },
+    onMappingModeChanged: (cb: (event: any) => void) => {
+        const listener = (_event: any, payload: any) => cb(payload)
+        ipcRenderer.on('automation.mapping.modeChanged', listener)
+        return () => ipcRenderer.removeListener('automation.mapping.modeChanged', listener)
+    },
+    onMappingPointAdded: (cb: (event: any) => void) => {
+        const listener = (_event: any, payload: any) => cb(payload)
+        ipcRenderer.on('automation.mapping.pointAdded', listener)
+        return () => ipcRenderer.removeListener('automation.mapping.pointAdded', listener)
+    },
+    onTemplateAdded: (cb: (event: any) => void) => {
+        const listener = (_event: any, payload: any) => cb(payload)
+        ipcRenderer.on('automation.mapping.templateAdded', listener)
+        return () => ipcRenderer.removeListener('automation.mapping.templateAdded', listener)
+    },
+    onTemplateUpdated: (cb: (event: any) => void) => {
+        const listener = (_event: any, payload: any) => cb(payload)
+        ipcRenderer.on('automation.mapping.templateUpdated', listener)
+        return () => ipcRenderer.removeListener('automation.mapping.templateUpdated', listener)
+    },
+    onTemplateDeleted: (cb: (event: any) => void) => {
+        const listener = (_event: any, payload: any) => cb(payload)
+        ipcRenderer.on('automation.mapping.templateDeleted', listener)
+        return () => ipcRenderer.removeListener('automation.mapping.templateDeleted', listener)
+    },
+    onPointCaptured: (cb: (event: any) => void) => {
+        const listener = (_event: any, payload: any) => cb(payload)
+        ipcRenderer.on('automation.mapping.pointCaptured', listener)
+        return () => ipcRenderer.removeListener('automation.mapping.pointCaptured', listener)
+    },
+    onTemplateCaptured: (cb: (event: any) => void) => {
+        const listener = (_event: any, payload: any) => cb(payload)
+        ipcRenderer.on('automation.mapping.templateCaptured', listener)
+        return () => ipcRenderer.removeListener('automation.mapping.templateCaptured', listener)
+    },
+    onMappingError: (cb: (event: any) => void) => {
+        const listener = (_event: any, payload: any) => cb(payload)
+        ipcRenderer.on('automation.mapping.error', listener)
+        return () => ipcRenderer.removeListener('automation.mapping.error', listener)
+    },
+    recordPointFromHotkey: (x: number, y: number, name: string, type?: string) => ipcRenderer.invoke('automation.recordPointFromHotkey', { x, y, name, type }),
+    recordTemplateFromHotkey: (name: string, region: any, screenshotPath?: string) => ipcRenderer.invoke('automation.recordTemplateFromHotkey', { name, region, screenshotPath }),
+    onWorkflowCreated: (cb: (event: any) => void) => {
+        const listener = (_event: any, payload: any) => cb(payload)
+        ipcRenderer.on('automation.workflow.created', listener)
+        return () => ipcRenderer.removeListener('automation.workflow.created', listener)
+    },
+    flow: {
+        listWorkflows: () => ipcRenderer.invoke('automation.flow.listWorkflows'),
+        getWorkflow: (id: string) => ipcRenderer.invoke('automation.flow.getWorkflow', id),
+        saveWorkflow: (graph: any) => ipcRenderer.invoke('automation.flow.saveWorkflow', graph),
+        deleteWorkflow: (id: string) => ipcRenderer.invoke('automation.flow.deleteWorkflow', id),
+        validateWorkflow: (graph: any) => ipcRenderer.invoke('automation.flow.validateWorkflow', graph),
+        runWorkflow: (id: string) => ipcRenderer.invoke('automation.flow.runWorkflow', id),
+        pause: () => ipcRenderer.invoke('automation.flow.pause'),
+        resume: () => ipcRenderer.invoke('automation.flow.resume'),
+        stop: () => ipcRenderer.invoke('automation.flow.stop'),
+        getExecutionStatus: () => ipcRenderer.invoke('automation.flow.getExecutionStatus'),
+        onStatus: (cb: (status: any) => void) => {
+            const listener = (_event: any, payload: any) => cb(payload)
+            ipcRenderer.on('automation.flow.execution.status', listener)
+            return () => ipcRenderer.removeListener('automation.flow.execution.status', listener)
+        },
+        onNodeStarted: (cb: (data: any) => void) => {
+            const listener = (_event: any, payload: any) => cb(payload)
+            ipcRenderer.on('automation.flow.execution.node.started', listener)
+            return () => ipcRenderer.removeListener('automation.flow.execution.node.started', listener)
+        },
+        onNodeFinished: (cb: (data: any) => void) => {
+            const listener = (_event: any, payload: any) => cb(payload)
+            ipcRenderer.on('automation.flow.execution.node.finished', listener)
+            return () => ipcRenderer.removeListener('automation.flow.execution.node.finished', listener)
+        },
+    },
+}
+
 // Use `contextBridge` APIs to expose Electron APIs to
 // renderer only if context isolation is enabled, otherwise
 // just add to the DOM global.
@@ -296,6 +430,7 @@ if (process.contextIsolated) {
         contextBridge.exposeInMainWorld('textHighlightAPI', textHighlightApi)
         contextBridge.exposeInMainWorld('ai', aiApi)
         contextBridge.exposeInMainWorld('permissions', permissionsApi)
+        contextBridge.exposeInMainWorld('automation', automationApi)
     } catch (error) {
         console.error(error)
     }
@@ -326,4 +461,6 @@ if (process.contextIsolated) {
     window.ai = aiApi
     // @ts-ignore (define in dts)
     window.permissions = permissionsApi
+    // @ts-ignore (define in dts)
+    window.automation = automationApi
 }

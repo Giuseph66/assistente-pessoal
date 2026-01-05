@@ -1,10 +1,12 @@
 import { useEffect, useState } from 'react';
 import './TextHighlightOutput.css';
+import { GeminiIcon, OpenAIIcon, OllamaIcon } from '../Icons';
 
 type TextHighlightTranscription = {
   text: string;
   mode: 'local' | 'ai';
   createdAt: number;
+  providerId?: string;
 };
 
 const formatDate = (timestamp: number): string => {
@@ -51,13 +53,34 @@ export function TextHighlightOutput(): JSX.Element {
     }
   };
 
+  const getProviderIcon = (providerId?: string) => {
+  switch (providerId) {
+      case 'gemini':
+        return <GeminiIcon size={18} />;
+      case 'openai':
+        return <OpenAIIcon size={18} />;
+      case 'ollama':
+        return <OllamaIcon size={18} />;
+      default:
+        return null;
+    }
+  };
+
   return (
     <div className="text-highlight-output">
       <header className="text-highlight-output__header">
         <div className="text-highlight-output__title">
-          <h2>Transcrição da Tela</h2>
+          <h2>Transcrição da Tela{payload?.providerId ? <span className="text-highlight-output__provider-icon">{getProviderIcon(payload?.providerId)}</span> : null}</h2>
           <span className="text-highlight-output__meta">
-            {payload ? `${payload.mode === 'ai' ? 'IA' : 'Local'} • ${formatDate(payload.createdAt)}` : 'Sem resultados'}
+            {payload ? (
+              payload.mode === 'ai' ? (
+                <>
+                  {' IA • '}{formatDate(payload.createdAt)}
+                </>
+              ) : (
+                <>Local • {formatDate(payload.createdAt)}</>
+              )
+            ) : 'Sem resultados'}
           </span>
         </div>
         <div className="text-highlight-output__actions">

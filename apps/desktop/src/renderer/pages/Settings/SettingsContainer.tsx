@@ -1,9 +1,10 @@
 import { useState } from 'react';
 import { SttSettings } from './SttSettings';
 import { AIAgentSettings } from './AIAgentSettings';
+import { AutomationSettings } from './AutomationSettings';
 import './SettingsContainer.css';
 
-type SettingsTab = 'stt' | 'ai';
+type SettingsTab = 'stt' | 'ai' | 'automation';
 
 export function SettingsContainer(): JSX.Element {
   const [activeTab, setActiveTab] = useState<SettingsTab>('stt');
@@ -23,11 +24,18 @@ export function SettingsContainer(): JSX.Element {
         >
           Agente de IA
         </button>
+        <button
+          className={`settings-tab ${activeTab === 'automation' ? 'active' : ''}`}
+          onClick={() => setActiveTab('automation')}
+        >
+          Automação
+        </button>
       </div>
 
       <div className="settings-content">
         {activeTab === 'stt' && <SttSettings />}
         {activeTab === 'ai' && <AIAgentSettings />}
+        {activeTab === 'automation' && <AutomationSettings />}
       </div>
     </div>
   );

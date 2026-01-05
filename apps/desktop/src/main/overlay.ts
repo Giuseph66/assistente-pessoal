@@ -241,6 +241,68 @@ export class OverlayManager {
   }
 
   /**
+   * Cria a janela do Editor de Workflow
+   */
+  createWorkflowEditorWindow(workflowId?: string): void {
+    if (this.workflowEditorWindow) {
+      this.workflowEditorWindow.show();
+      this.workflowEditorWindow.focus();
+      // If window exists, we might want to reload with new ID or send IPC
+      if (workflowId) {
+        const url = is.dev && process.env['ELECTRON_RENDERER_URL']
+          ? `${process.env['ELECTRON_RENDERER_URL']}#workflow-editor?id=${workflowId}`
+          : `file://${join(__dirname, '../renderer/index.html')}#workflow-editor?id=${workflowId}`;
+        this.workflowEditorWindow.loadURL(url);
+      }
+      return;
+    }
+
+    this.workflowEditorWindow = new BrowserWindow({
+      width: 1200,
+      height: 800,
+      frame: false,
+      transparent: true,
+      backgroundColor: '#00000000',
+      webPreferences: {
+        preload: join(__dirname, '../preload/index.js'),
+        nodeIntegration: false,
+        contextIsolation: true,
+        sandbox: false,
+      },
+      show: false,
+    });
+
+    const hash = workflowId ? `workflow-editor?id=${workflowId}` : 'workflow-editor';
+
+    if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
+      this.workflowEditorWindow.loadURL(`${process.env['ELECTRON_RENDERER_URL']}#${hash}`);
+    } else {
+      this.workflowEditorWindow.loadFile(join(__dirname, '../renderer/index.html'), {
+        hash: hash,
+      });
+    }
+
+    this.workflowEditorWindow.once('ready-to-show', () => {
+      if (this.workflowEditorWindow) {
+        this.workflowEditorWindow.show();
+        this.workflowEditorWindow.focus();
+      }
+    });
+
+    this.workflowEditorWindow.on('maximize', () => {
+      this.workflowEditorWindow?.webContents.send('window:maximized-changed', true);
+    });
+
+    this.workflowEditorWindow.on('unmaximize', () => {
+      this.workflowEditorWindow?.webContents.send('window:maximized-changed', false);
+    });
+
+    this.workflowEditorWindow.on('closed', () => {
+      this.workflowEditorWindow = null;
+    });
+  }
+
+  /**
    * Mostra a janela overlay
    * @param enableContentProtection Se true, também habilita content protection
    */
@@ -260,6 +322,12 @@ export class OverlayManager {
       }
 
       logger.debug('Overlay shown');
+    }
+
+    if (this.screenshotPreviewWindow && !this.screenshotPreviewWindow.isDestroyed() && this.screenshotPreviewWindow.isVisible()) {
+      this.screenshotPreviewWindow.setAlwaysOnTop(true, 'screen-saver');
+      this.screenshotPreviewWindow.show();
+      this.screenshotPreviewWindow.moveTop();
     }
   }
 
@@ -576,8 +644,10 @@ export class OverlayManager {
   private historyWindow: BrowserWindow | null = null;
   private textHighlightOutputWindow: BrowserWindow | null = null;
   private screenshotSelectorWindow: BrowserWindow | null = null;
+  private screenshotPreviewWindow: BrowserWindow | null = null;
   private commandBarWindow: BrowserWindow | null = null;
   private hudDropdownWindow: BrowserWindow | null = null;
+  private workflowEditorWindow: BrowserWindow | null = null;
   private vintageWindow: BrowserWindow | null = null;
   private miniHUDWindow: BrowserWindow | null = null;
   private previouslyVisibleWindows: Set<string> = new Set();
@@ -597,7 +667,7 @@ export class OverlayManager {
     const primaryDisplay = screen.getPrimaryDisplay();
     const { width, height: screenHeight } = primaryDisplay.workAreaSize;
     const windowWidth = 750;
-    const yPosition = primaryDisplay.bounds.height - (primaryDisplay.bounds.height * 0.15);
+    const yPosition = primaryDisplay.bounds.height - (primaryDisplay.bounds.height * 0.1);
     // Log detalhado das informações do display
     logger.info({
       display: {
@@ -707,19 +777,19 @@ export class OverlayManager {
 
         // Verificação principal: HUD vs Portal
         const isOver = this.checkHUDOverVintageSync();
-        
+
         // Verificação alternativa: se o mouse está sobre o portal E o HUD está próximo do mouse
         const mousePos = screen.getCursorScreenPoint();
-        const hudBounds = this.hudWindow && !this.hudWindow.isDestroyed() 
-          ? this.hudWindow.getBounds() 
+        const hudBounds = this.hudWindow && !this.hudWindow.isDestroyed()
+          ? this.hudWindow.getBounds()
           : null;
-        const vintageBounds = this.vintageWindow && !this.vintageWindow.isDestroyed() 
-          ? this.vintageWindow.getBounds() 
+        const vintageBounds = this.vintageWindow && !this.vintageWindow.isDestroyed()
+          ? this.vintageWindow.getBounds()
           : null;
-        
+
         let mouseOverPortal = false;
         let hudNearMouse = false;
-        
+
         if (vintageBounds && hudBounds && this.isVintagePortalActive) {
           // Mouse sobre portal?
           mouseOverPortal = (
@@ -728,13 +798,13 @@ export class OverlayManager {
             mousePos.y >= vintageBounds.y - 40 &&
             mousePos.y <= vintageBounds.y + vintageBounds.height + 40
           );
-          
+
           // HUD próximo do mouse? (dentro de 100px)
           const distX = Math.abs(mousePos.x - (hudBounds.x + hudBounds.width / 2));
           const distY = Math.abs(mousePos.y - (hudBounds.y + hudBounds.height / 2));
           const distance = Math.sqrt(distX * distX + distY * distY);
           hudNearMouse = distance < 100;
-          
+
           logger.info({
             mouse: { x: mousePos.x, y: mousePos.y },
             hud: hudBounds ? { x: hudBounds.x, y: hudBounds.y, centerX: hudBounds.x + hudBounds.width / 2, centerY: hudBounds.y + hudBounds.height / 2 } : null,
@@ -744,17 +814,17 @@ export class OverlayManager {
             distance: distance.toFixed(1)
           }, 'Verificação alternativa: Mouse + HUD');
         }
-        
-        logger.info({ 
-          isVintagePortalActive: this.isVintagePortalActive, 
-          isOver, 
-          mouseOverPortal, 
-          hudNearMouse 
+
+        logger.info({
+          isVintagePortalActive: this.isVintagePortalActive,
+          isOver,
+          mouseOverPortal,
+          hudNearMouse
         }, 'Resultado da verificação de captura');
-        
+
         // Captura se: (HUD sobre portal) OU (mouse sobre portal E HUD próximo do mouse)
         const shouldCapture = this.isVintagePortalActive && (isOver || (mouseOverPortal && hudNearMouse));
-        
+
         if (shouldCapture) {
           logger.info('Portal Ativo: HUD capturado! Iniciando Modo Mini...');
           this.enterMiniMode();
@@ -766,9 +836,9 @@ export class OverlayManager {
       }, 150);
     });
 
-    this.hudWindow.on('closed', () => { 
+    this.hudWindow.on('closed', () => {
       isDraggingHUD = false;
-      this.hudWindow = null; 
+      this.hudWindow = null;
     });
   }
 
@@ -939,6 +1009,66 @@ export class OverlayManager {
   }
 
   /**
+   * Mostra a janela de preview de screenshot longo
+   */
+  showScreenshotPreviewWindow(display?: Electron.Display): void {
+    const targetDisplay = display || screen.getPrimaryDisplay();
+    const width = 320;
+    const height = 220;
+    const margin = 18;
+    const workArea = targetDisplay.workArea;
+    const x = workArea.x + workArea.width - width - margin;
+    const y = workArea.y + workArea.height - height - margin;
+
+    if (this.screenshotPreviewWindow && !this.screenshotPreviewWindow.isDestroyed()) {
+      this.screenshotPreviewWindow.setBounds({ x, y, width, height }, true);
+      this.screenshotPreviewWindow.show();
+      this.screenshotPreviewWindow.moveTop();
+      return;
+    }
+
+    this.screenshotPreviewWindow = new BrowserWindow({
+      width,
+      height,
+      x,
+      y,
+      frame: false,
+      transparent: true,
+      backgroundColor: '#00000000',
+      resizable: false,
+      movable: true,
+      focusable: true,
+      alwaysOnTop: true,
+      skipTaskbar: true,
+      hasShadow: false,
+      webPreferences: {
+        preload: join(__dirname, '../preload/index.js'),
+        nodeIntegration: false,
+        contextIsolation: true,
+        sandbox: false,
+      }
+    });
+
+    this.screenshotPreviewWindow.setMenuBarVisibility(false);
+    this.screenshotPreviewWindow.setAlwaysOnTop(true, 'screen-saver');
+
+    if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
+      this.screenshotPreviewWindow.loadURL(`${process.env['ELECTRON_RENDERER_URL']}#screenshot-preview`);
+    } else {
+      this.screenshotPreviewWindow.loadFile(join(__dirname, '../renderer/index.html'), { hash: 'screenshot-preview' });
+    }
+
+    this.screenshotPreviewWindow.on('closed', () => { this.screenshotPreviewWindow = null; });
+  }
+
+  /**
+   * Obtém a janela de preview de screenshot longo
+   */
+  getScreenshotPreviewWindow(): BrowserWindow | null {
+    return this.screenshotPreviewWindow;
+  }
+
+  /**
    * Cria a janela Command Bar (Spotlight style)
    */
   createCommandBarWindow(): void {
@@ -1047,14 +1177,14 @@ export class OverlayManager {
     // nao mudar essas constantes(margin, finalX, finalY, dropdownHeight, dropdownWidth)
     const dropdownHeight = 300;
     const dropdownWidth = 300;
-    const margin = 50; 
-    const finalX = x - (dropdownWidth * 0.15); 
+    const margin = 50;
+    const finalX = x - (dropdownWidth * 0.15);
     const finalY = y - dropdownHeight - margin;
 
     // Garante que não saia da tela
     const primaryDisplay = screen.getPrimaryDisplay();
     const workArea = primaryDisplay.workArea;
-    
+
     const clampedX = Math.max(workArea.x, Math.min(finalX, workArea.x + workArea.width - dropdownWidth));
     const clampedY = Math.max(workArea.y, Math.min(finalY, workArea.y + workArea.height - dropdownHeight));
 
@@ -1108,6 +1238,7 @@ export class OverlayManager {
     if (this.historyWindow) this.historyWindow.destroy();
     if (this.textHighlightOutputWindow) this.textHighlightOutputWindow.destroy();
     if (this.screenshotSelectorWindow) this.screenshotSelectorWindow.destroy();
+    if (this.screenshotPreviewWindow) this.screenshotPreviewWindow.destroy();
     if (this.commandBarWindow) this.commandBarWindow.destroy();
     if (this.hudDropdownWindow) this.hudDropdownWindow.destroy();
     if (this.vintageWindow) this.vintageWindow.destroy();
@@ -1177,7 +1308,7 @@ export class OverlayManager {
    */
   private startCollisionTracking(): void {
     if (this.vintageCollisionInterval) return;
-    
+
     this.vintageCollisionInterval = setInterval(() => {
       if (this.vintageWindow && !this.vintageWindow.isDestroyed() && this.vintageWindow.isVisible()) {
         const mousePos = screen.getCursorScreenPoint();
@@ -1226,11 +1357,11 @@ export class OverlayManager {
         const { width: screenWidth, height: screenHeight } = primaryDisplay.workAreaSize;
         const windowWidth = 200; // largura da VintageWindow
         const windowHeight = 180; // altura da VintageWindow
-        
+
         // Gera posição aleatória garantindo que a janela fique dentro da tela
         finalX = Math.floor(Math.random() * (screenWidth - windowWidth));
         finalY = Math.floor(Math.random() * (screenHeight - windowHeight));
-        
+
         logger.info({ finalX, finalY, screenWidth, screenHeight }, 'Vintage window: posição aleatória gerada');
       } else {
         finalX = Math.round(x);
@@ -1240,10 +1371,10 @@ export class OverlayManager {
       this.vintageWindow.setPosition(finalX, finalY);
       this.vintageWindow.showInactive(); // show sem roubar foco
       logger.info({ x: finalX, y: finalY }, 'Vintage window: shown at position');
-      
+
       // Inicia rastreamento imediatamente para garantir que funcione em todos os sistemas
       this.startCollisionTracking();
-      
+
       // Verificação imediata de colisão ao mostrar
       const mousePos = screen.getCursorScreenPoint();
       this.updateVintageCollision(mousePos.x, mousePos.y);
@@ -1259,11 +1390,11 @@ export class OverlayManager {
   moveVintageWindow(x: number, y: number): void {
     if (this.vintageWindow && !this.vintageWindow.isDestroyed()) {
       this.vintageWindow.setPosition(Math.round(x), Math.round(y));
-      
+
       // Detecção de colisão com o mouse
       const mousePos = screen.getCursorScreenPoint();
       this.updateVintageCollision(mousePos.x, mousePos.y);
-      
+
       // Verifica se o HUD está sobre a janela vintage (drop zone)
       this.checkHUDOverVintage();
     }
@@ -1276,7 +1407,7 @@ export class OverlayManager {
     if (this.vintageWindow && !this.vintageWindow.isDestroyed()) {
       this.vintageWindow.hide();
     }
-    
+
     // Limpa timer de mouse sobre portal
     this.mouseOverPortalStartTime = 0;
     if (this.mouseOverPortalTimeout) {
@@ -1310,10 +1441,10 @@ export class OverlayManager {
     if (isColliding) {
       logger.debug({
         mouse: { x: mouseX, y: mouseY },
-        window: { 
-          x: bounds.x, 
-          y: bounds.y, 
-          width: bounds.width, 
+        window: {
+          x: bounds.x,
+          y: bounds.y,
+          width: bounds.width,
           height: bounds.height,
           right: bounds.x + bounds.width,
           bottom: bounds.y + bounds.height
@@ -1327,7 +1458,7 @@ export class OverlayManager {
         }
       }, 'Comparação Mouse vs Janela Vintage');
     }
-    
+
     this.vintageWindow.webContents.send('vintage:collision-state', isColliding);
 
     // Lógica de ativação do Modo Mini baseada no mouse sobre o portal
@@ -1336,12 +1467,12 @@ export class OverlayManager {
       if (this.mouseOverPortalStartTime === 0) {
         this.mouseOverPortalStartTime = Date.now();
         logger.info('Mouse entrou no portal - iniciando timer de 1s para Modo Mini...');
-        
+
         // Limpa timeout anterior se existir
         if (this.mouseOverPortalTimeout) {
           clearTimeout(this.mouseOverPortalTimeout);
         }
-        
+
         // Timer de 1 segundo para ativar o Modo Mini
         this.mouseOverPortalTimeout = setTimeout(() => {
           if (this.isVintagePortalActive) {
@@ -1384,7 +1515,7 @@ export class OverlayManager {
 
     // Envia estado para o renderer da janela vintage (feedback visual)
     this.vintageWindow.webContents.send('vintage:drop-zone-active', isOverlapping);
-    
+
     // Envia estado para o HUD (para minimizar ao soltar)
     if (this.hudWindow && !this.hudWindow.isDestroyed()) {
       this.hudWindow.webContents.send('vintage:drop-zone-active', isOverlapping);
@@ -1417,7 +1548,7 @@ export class OverlayManager {
     const vintageCenterX = vintageBounds.x + vintageBounds.width / 2;
     const vintageCenterY = vintageBounds.y + vintageBounds.height / 2;
     const centerDistance = Math.sqrt(
-      Math.pow(hudCenterX - vintageCenterX, 2) + 
+      Math.pow(hudCenterX - vintageCenterX, 2) +
       Math.pow(hudCenterY - vintageCenterY, 2)
     );
 
@@ -1462,7 +1593,7 @@ export class OverlayManager {
   minimizeHUD(): void {
     if (this.hudWindow && !this.hudWindow.isDestroyed()) {
       const isOver = this.checkHUDOverVintageSync();
-      
+
       if (this.isVintagePortalActive && isOver) {
         logger.info('HUD Minimizado via Portal: Iniciando Modo Mini');
         this.enterMiniMode();
@@ -1478,13 +1609,13 @@ export class OverlayManager {
    */
   handleHUDRightClick(): void {
     logger.info('HUD: clique direito detectado, portal ativado!');
-    
+
     // Força reset
     this.isVintagePortalActive = false;
     if (this.vintagePortalTimeout) {
       clearTimeout(this.vintagePortalTimeout);
     }
-    
+
     // Limpa timer de mouse sobre portal
     this.mouseOverPortalStartTime = 0;
     if (this.mouseOverPortalTimeout) {
@@ -1494,10 +1625,10 @@ export class OverlayManager {
 
     const hudBounds = this.hudWindow?.getBounds();
     if (hudBounds) {
-        // Mostra a janela vintage em posição aleatória (sem passar coordenadas)
-        this.showVintageWindow();
+      // Mostra a janela vintage em posição aleatória (sem passar coordenadas)
+      this.showVintageWindow();
     }
-    
+
     this.isVintagePortalActive = true;
 
     this.vintagePortalTimeout = setTimeout(() => {
@@ -1558,10 +1689,10 @@ export class OverlayManager {
    */
   enterMiniMode(): void {
     logger.info('Entrando no Modo Mini');
-    
+
     // Salva quais janelas do sistema estão visíveis para restaurar depois
     this.previouslyVisibleWindows.clear();
-    
+
     const checkAndClose = (win: BrowserWindow | null, id: string) => {
       if (win && !win.isDestroyed() && win.isVisible()) {
         this.previouslyVisibleWindows.add(id);
@@ -1587,7 +1718,7 @@ export class OverlayManager {
     if (this.vintagePortalTimeout) {
       clearTimeout(this.vintagePortalTimeout);
     }
-    
+
     // Limpa timer de mouse sobre portal
     this.mouseOverPortalStartTime = 0;
     if (this.mouseOverPortalTimeout) {
@@ -1600,11 +1731,11 @@ export class OverlayManager {
     if (this.miniHUDWindow) {
       const primaryDisplay = screen.getPrimaryDisplay();
       const { width, height } = primaryDisplay.workAreaSize;
-      
+
       const margin = height * 0.1;
       const x = Math.round((width - 64) / 2);
       const y = Math.round(margin);
-      
+
       this.miniHUDWindow.setPosition(x, y);
       this.miniHUDWindow.show();
       this.miniHUDWindow.setAlwaysOnTop(true, 'screen-saver');
@@ -1616,7 +1747,7 @@ export class OverlayManager {
    */
   exitMiniMode(): void {
     logger.info('Saindo do Modo Mini, restaurando ambiente');
-    
+
     if (this.miniHUDWindow && !this.miniHUDWindow.isDestroyed()) {
       this.miniHUDWindow.hide();
     }
@@ -1627,7 +1758,7 @@ export class OverlayManager {
         this.hudWindow.show();
       }
     }
-    
+
     if (this.previouslyVisibleWindows.has('overlay')) {
       if (!this.overlayWindow || this.overlayWindow.isDestroyed()) {
         this.createWindow();
@@ -1635,7 +1766,7 @@ export class OverlayManager {
         this.overlayWindow.show();
       }
     }
-    
+
     if (this.previouslyVisibleWindows.has('settings')) {
       if (!this.settingsWindow || this.settingsWindow.isDestroyed()) {
         this.createSettingsWindow();
@@ -1643,7 +1774,7 @@ export class OverlayManager {
         this.settingsWindow.show();
       }
     }
-    
+
     if (this.previouslyVisibleWindows.has('history')) {
       if (!this.historyWindow || this.historyWindow.isDestroyed()) {
         this.createHistoryWindow();
@@ -1659,7 +1790,7 @@ export class OverlayManager {
         this.textHighlightOutputWindow.show();
       }
     }
-    
+
     if (this.previouslyVisibleWindows.has('command-bar')) {
       if (!this.commandBarWindow || this.commandBarWindow.isDestroyed()) {
         this.createCommandBarWindow();
@@ -1676,11 +1807,11 @@ export class OverlayManager {
    */
   dragMiniHUD(deltaX: number, deltaY: number): void {
     if (!this.miniHUDWindow || this.miniHUDWindow.isDestroyed()) return;
-    
+
     const bounds = this.miniHUDWindow.getBounds();
     const newX = bounds.x + deltaX;
     const newY = bounds.y + deltaY;
-    
+
     this.miniHUDWindow.setPosition(newX, newY);
   }
 }

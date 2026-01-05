@@ -33,12 +33,15 @@ import { registerSystemSttIpc } from './ipc/systemSttIpc'
 import { registerScreenshotIpc } from './ipc/screenshotIpc'
 import { registerTranslationIpc } from './ipc/translationIpc'
 import { registerSessionIpc } from './ipc/sessionIpc'
+import { registerAutomationIpc } from './ipc/automationIpc'
+import { registerAutomationFlowIpc } from './ipc/automationFlowIpc'
 import { getModelManager, getSttController } from './stt/sttService'
 import { SystemAudioSourceManager } from './audio/system/SystemAudioSourceManager'
 import { RecorderService } from './audio/recording/RecorderService'
 import { SystemSttController } from './stt/SystemSttController'
 import { ScreenTranslateService } from './services/translation/ScreenTranslateService'
 import { SystemAudioPreviewService } from './audio/system/SystemAudioPreviewService'
+import { setSharedSttText, getSharedSttText, clearSharedSttText } from './storage/sharedInputStore'
 
 function createWindow(): void {
     // Create the browser window.
@@ -88,6 +91,7 @@ setupErrorHandlers();
 
 // Initialize logger
 const logger = getLogger();
+let db: DatabaseManager;
 
 // This method will be called when Electron has finished
 // initialization and is ready to create browser windows.
@@ -101,7 +105,7 @@ app.whenReady().then(async () => {
     logger.info('Configuration loaded');
 
     // Initialize database
-    const db = new DatabaseManager();
+    db = new DatabaseManager();
     logger.info('Database initialized');
 
     // Initialize WebSocket gateway
@@ -124,43 +128,43 @@ app.whenReady().then(async () => {
 
     // Create overlay window
     const overlayManager = getOverlayManager();
-   // (TextHighlightOverlayManager already initialized above)
+    // (TextHighlightOverlayManager already initialized above)
 
-   // Text Highlight Overlay Manager (OCR) initialization
-   const thManager = getTextHighlightOverlayManager();
-   await thManager.initialize();
+    // Text Highlight Overlay Manager (OCR) initialization
+    const thManager = getTextHighlightOverlayManager();
+    await thManager.initialize();
 
-   ipcMain.handle('text-highlight:getMode', async () => {
-     return { mode: getTextHighlightMode() };
-   });
+    ipcMain.handle('text-highlight:getMode', async () => {
+        return { mode: getTextHighlightMode() };
+    });
 
-   ipcMain.handle('text-highlight:setMode', async (_event, mode: 'local' | 'ai') => {
-     const nextMode = setTextHighlightMode(mode);
-     return { mode: nextMode };
-   });
+    ipcMain.handle('text-highlight:setMode', async (_event, mode: 'local' | 'ai') => {
+        const nextMode = setTextHighlightMode(mode);
+        return { mode: nextMode };
+    });
 
-   ipcMain.handle('text-highlight:getLastTranscription', async () => {
-     return getLastTextHighlightTranscription();
-   });
+    ipcMain.handle('text-highlight:getLastTranscription', async () => {
+        return getLastTextHighlightTranscription();
+    });
 
-   ipcMain.handle('text-highlight:getCaptureMode', async () => {
-     return { mode: getTextHighlightCaptureMode() };
-   });
+    ipcMain.handle('text-highlight:getCaptureMode', async () => {
+        return { mode: getTextHighlightCaptureMode() };
+    });
 
-   ipcMain.handle('text-highlight:setCaptureMode', async (_event, mode: 'fullscreen' | 'area') => {
-     const nextMode = setTextHighlightCaptureMode(mode);
-     return { mode: nextMode };
-   });
+    ipcMain.handle('text-highlight:setCaptureMode', async (_event, mode: 'fullscreen' | 'area') => {
+        const nextMode = setTextHighlightCaptureMode(mode);
+        return { mode: nextMode };
+    });
 
-   // Listen for HUD trigger to start OCR overlay
-   ipcMain.on('hud:trigger-text-highlight', async () => {
-     logger.info('HUD: trigger-text-highlight received');
-     try {
-       await runTextHighlight();
-     } catch (err) {
-       logger.error({ err }, 'TextHighlightOverlay: failed to highlight from HUD');
-     }
-   });
+    // Listen for HUD trigger to start OCR overlay
+    ipcMain.on('hud:trigger-text-highlight', async () => {
+        logger.info('HUD: trigger-text-highlight received');
+        try {
+            await runTextHighlight();
+        } catch (err) {
+            logger.error({ err }, 'TextHighlightOverlay: failed to highlight from HUD');
+        }
+    });
 
     // Register overlay IPC handlers BEFORE creating window to ensure they're available
     // IPC handlers for overlay
@@ -290,6 +294,10 @@ app.whenReady().then(async () => {
         overlayManager.createCommandBarWindow();
     });
 
+    ipcMain.on('window:open-workflow-editor', (_event, workflowId?: string) => {
+        overlayManager.createWorkflowEditorWindow(workflowId);
+    });
+
     // HUD Dropdown handlers
     ipcMain.handle('hud-dropdown:show', async (event, { x, y, data }: { x: number; y: number; data?: any }) => {
         const hudWindow = overlayManager.getHUDWindow();
@@ -308,6 +316,19 @@ app.whenReady().then(async () => {
 
     ipcMain.on('hud-dropdown:hide', () => {
         overlayManager.hideHUDDropdown();
+    });
+
+    // Shared STT Input handlers - para o atalho de colar texto STT em apps externos
+    ipcMain.on('stt-input:update', (_event, text: string) => {
+        setSharedSttText(text);
+    });
+
+    ipcMain.on('stt-input:clear', () => {
+        clearSharedSttText();
+    });
+
+    ipcMain.handle('stt-input:get', () => {
+        return getSharedSttText();
     });
 
     ipcMain.handle('hud-dropdown:isVisible', async () => {
@@ -389,7 +410,7 @@ app.whenReady().then(async () => {
             const { systemPreferences } = require('electron');
             if (systemPreferences && systemPreferences.getMediaAccessStatus) {
                 const status = systemPreferences.getMediaAccessStatus('microphone');
-                return { 
+                return {
                     granted: status === 'granted',
                     status: status || 'unknown'
                 };
@@ -420,7 +441,7 @@ app.whenReady().then(async () => {
     ipcMain.handle('permissions:openSystemSettings', async () => {
         try {
             const platform = process.platform;
-            
+
             if (platform === 'linux') {
                 // Tenta abrir configurações de privacidade/permissões no Linux
                 // Diferentes distribuições têm diferentes ferramentas
@@ -432,12 +453,12 @@ app.whenReady().then(async () => {
                     { cmd: 'xfce4-settings-manager', args: [] },         // XFCE
                     { cmd: 'gnome-settings', args: [] },                 // GNOME alternativo
                 ];
-                
+
                 // Tenta executar o primeiro comando disponível
                 const { exec } = require('child_process');
                 const { promisify } = require('util');
                 const execAsync = promisify(exec);
-                
+
                 for (const { cmd, args } of commands) {
                     try {
                         await execAsync(`which ${cmd}`);
@@ -449,7 +470,7 @@ app.whenReady().then(async () => {
                         continue;
                     }
                 }
-                
+
                 // Fallback: tenta abrir via xdg-open (padrão Linux)
                 try {
                     spawn('xdg-open', ['settings://privacy'], { detached: true, stdio: 'ignore' }).unref();
@@ -468,7 +489,7 @@ app.whenReady().then(async () => {
                 shell.openExternal('ms-settings:privacy-microphone');
                 return { success: true };
             }
-            
+
             return { success: false, error: 'Unsupported platform' };
         } catch (error: any) {
             logger.error({ err: error }, 'Failed to open system settings');
@@ -537,6 +558,10 @@ app.whenReady().then(async () => {
 
     // Initialize Session IPC
     registerSessionIpc(db);
+
+    // Initialize Automation IPC
+    registerAutomationIpc();
+    registerAutomationFlowIpc();
 
     // Initialize default AI providers in database
     try {

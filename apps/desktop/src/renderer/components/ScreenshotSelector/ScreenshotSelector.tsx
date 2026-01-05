@@ -10,9 +10,14 @@ type SelectorPayload = {
   lastRegion?: { x: number; y: number; width: number; height: number; monitorIndex?: number; displayId?: number };
   displayId: number;
   monitorIndex: number;
+  longCaptureSupported?: boolean;
+  longCaptureReason?: string;
+  mode?: 'initial' | 'long';
+  sessionId?: string;
+  lockSelection?: boolean;
 };
 
-type SelectorAction = 'confirm' | 'cancel';
+type SelectorAction = 'single' | 'long' | 'finish' | 'cancel';
 
 export function ScreenshotSelector(): JSX.Element {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -20,6 +25,7 @@ export function ScreenshotSelector(): JSX.Element {
   const [payload, setPayload] = useState<SelectorPayload | null>(null);
   const [rect, setRect] = useState<Rect | null>(null);
   const [dragging, setDragging] = useState(false);
+  const [isCapturing, setIsCapturing] = useState(false);
 
   useEffect(() => {
     const handleData = (_event: any, data: SelectorPayload) => {
@@ -59,7 +65,11 @@ export function ScreenshotSelector(): JSX.Element {
         sendAction('cancel');
       }
       if (event.key === 'Enter') {
-        sendAction('confirm');
+        if (payload?.mode === 'long') {
+          sendAction('finish');
+        } else {
+          sendAction('single');
+        }
       }
     };
     window.addEventListener('keydown', handleKey);
@@ -68,17 +78,18 @@ export function ScreenshotSelector(): JSX.Element {
 
   const toGlobalRegion = (selection: Rect, bounds: SelectorPayload['displayBounds']) => {
     return {
-      x: Math.round(bounds.x + selection.x),
-      y: Math.round(bounds.y + selection.y),
-      width: Math.round(selection.w),
-      height: Math.round(selection.h),
+      x: Math.floor(bounds.x + selection.x),
+      y: Math.floor(bounds.y + selection.y),
+      width: Math.ceil(selection.w),
+      height: Math.ceil(selection.h),
     };
   };
 
   const sendAction = (action: SelectorAction) => {
     if (!payload) return;
-    if (action === 'confirm') {
+    if (action === 'single' || action === 'long') {
       if (!rect || rect.w < 8 || rect.h < 8) return;
+      setIsCapturing(true);
       const region = toGlobalRegion(rect, payload.displayBounds);
       try {
         localStorage.setItem('screenshot.lastRegion', JSON.stringify({
@@ -90,6 +101,20 @@ export function ScreenshotSelector(): JSX.Element {
       } catch {
         // ignore
       }
+      setTimeout(() => {
+        window.electron.ipcRenderer.send('screenshot-selector:result', {
+          token: payload.token,
+          action,
+          region,
+          monitorIndex: payload.monitorIndex,
+          displayId: payload.displayId,
+        });
+      }, 90);
+      return;
+    }
+    if (action === 'finish') {
+      if (!rect || rect.w < 8 || rect.h < 8) return;
+      const region = toGlobalRegion(rect, payload.displayBounds);
       window.electron.ipcRenderer.send('screenshot-selector:result', {
         token: payload.token,
         action,
@@ -106,6 +131,7 @@ export function ScreenshotSelector(): JSX.Element {
   };
 
   const handleMouseDown = (event: MouseEvent<HTMLDivElement>) => {
+    if (payload?.lockSelection) return;
     const container = containerRef.current;
     if (!container) return;
     const bounds = container.getBoundingClientRect();
@@ -117,6 +143,7 @@ export function ScreenshotSelector(): JSX.Element {
   };
 
   const handleMouseMove = (event: MouseEvent<HTMLDivElement>) => {
+    if (payload?.lockSelection) return;
     if (!dragging || !startRef.current) return;
     const container = containerRef.current;
     if (!container) return;
@@ -132,6 +159,7 @@ export function ScreenshotSelector(): JSX.Element {
   };
 
   const handleMouseUp = () => {
+    if (payload?.lockSelection) return;
     if (!dragging || !rect) {
       setDragging(false);
       return;
@@ -143,18 +171,30 @@ export function ScreenshotSelector(): JSX.Element {
   };
 
   const hasSelection = Boolean(rect && rect.w >= 8 && rect.h >= 8);
+  const longSupported = payload?.longCaptureSupported !== false;
+  const longDisabledReason = longSupported ? '' : payload?.longCaptureReason || 'Captura longa indisponivel';
+  const isLongMode = payload?.mode === 'long';
 
   return (
     <div
       ref={containerRef}
-      className="screenshot-selector"
+      className={`screenshot-selector${isCapturing ? ' screenshot-selector--capturing' : ''}`}
       onMouseDown={handleMouseDown}
       onMouseMove={handleMouseMove}
       onMouseUp={handleMouseUp}
     >
+      {/*
       <div className="screenshot-selector__hint">
-        Arraste para selecionar. Enter confirma. Esc cancela.
+        {isLongMode
+          ? 'Longa continua. Concluir finaliza. Esc cancela.'
+          : 'Arraste para selecionar. Enter captura. Esc cancela. Longa faz scroll.'}
+        {!longSupported && (
+          <span className="screenshot-selector__hint-warning">
+            {longDisabledReason}
+          </span>
+        )}
       </div>
+            */}
 
       {rect && (
         <div
@@ -177,11 +217,19 @@ export function ScreenshotSelector(): JSX.Element {
           Cancelar
         </button>
         <button
+          className="screenshot-selector__btn icon"
+          onClick={() => sendAction('long')}
+          disabled={!hasSelection || !longSupported}
+          title={longSupported ? 'Captura longa' : longDisabledReason}
+        >
+          Longa
+        </button>
+        <button
           className="screenshot-selector__btn primary"
-          onClick={() => sendAction('confirm')}
+          onClick={() => sendAction(isLongMode ? 'finish' : 'single')}
           disabled={!hasSelection}
         >
-          Capturar area
+          {isLongMode ? 'Concluir' : 'Capturar area'}
         </button>
       </div>
     </div>

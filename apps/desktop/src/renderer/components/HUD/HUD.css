@@ -132,14 +132,14 @@
 .input-wrapper {
     background-color: rgba(0, 0, 0, 0.2);
     border-radius: 12px;
-    padding: 0 12px;
+    padding: 0 8px;
     height: 36px;
     width: 200px;
     border: 1px solid rgba(255, 255, 255, 0.05);
     transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 4px;
     box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.2);
 }
 
@@ -180,14 +180,15 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 26px;
-    height: 26px;
-    border-radius: 8px;
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    background: rgba(255, 255, 255, 0.06);
+    width: 20px;
+    height: 20px;
+    border-radius: 6px;
+    border: none;
+    background: transparent;
     color: #ffffff;
     cursor: pointer;
     transition: all 0.2s ease;
+    flex-shrink: 0;
 }
 
 .hud-send-btn:hover {
@@ -200,40 +201,97 @@
     cursor: default;
 }
 
+.hud-clear-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+    height: 20px;
+    background: transparent;
+    border: none;
+    border-radius: 6px;
+    color: #ffffff;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    flex-shrink: 0;
+}
+
+.hud-clear-btn:hover {
+    background: rgba(255, 255, 255, 0.14);
+    border-color: rgba(255, 255, 255, 0.16);
+}
+
 .hud-cta {
     display: flex;
     align-items: center;
-    gap: 8px;
-    background: linear-gradient(135deg, #6366f1, #8b5cf6);
+    justify-content: center;
+    background: transparent;
     color: white;
-    padding: 0 18px;
+    width: 36px;
     height: 36px;
+    padding: 0;
     border-radius: 12px;
     font-weight: 700;
     font-size: 12px;
+    color: #4338ca;
     white-space: nowrap;
     transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-    border: none;
+    border: 2px solid rgba(99, 102, 241, 0.4);
     cursor: pointer;
-    box-shadow: 0 4px 15px rgba(99, 102, 241, 0.3);
+    box-shadow: 
+        0 4px 15px rgba(99, 102, 241, 0.2),
+        0 0 20px rgba(139, 92, 246, 0.2);
+    /* HUD bar é uma área de drag (janela frameless do Electron).
+       O botão precisa ser no-drag, senão não recebe clique. */
+    -webkit-app-region: no-drag;
 }
 
 .hud-cta:hover {
     transform: translateY(-1px);
-    box-shadow: 0 6px 20px rgba(99, 102, 241, 0.4);
-    filter: brightness(1.1);
+    background: rgba(99, 102, 241, 0.15);
+    border-color: rgba(99, 102, 241, 0.6);
+    box-shadow: 
+        0 6px 20px rgba(99, 102, 241, 0.3),
+        0 0 30px rgba(139, 92, 246, 0.3);
 }
 
 .hud-cta.active {
-    background: linear-gradient(135deg, #ef4444, #f43f5e);
-    box-shadow: 0 4px 15px rgba(239, 68, 68, 0.3);
+    background: transparent;
+    color: rgb(114, 47, 55);
+    border: 2px solid rgba(114, 47, 55, 0.8);
+    box-shadow: 
+        0 4px 15px rgba(114, 47, 55, 0.3),
+        0 0 0 2px rgba(114, 47, 55, 0.4),
+        0 0 20px rgba(114, 47, 55, 0.5),
+        0 0 30px rgba(107, 15, 26, 0.4);
     animation: pulse-active 2s infinite;
 }
 
 @keyframes pulse-active {
-    0% { transform: scale(1); box-shadow: 0 4px 15px rgba(239, 68, 68, 0.3); }
-    50% { transform: scale(1.03); box-shadow: 0 8px 30px rgba(239, 68, 68, 0.5); }
-    100% { transform: scale(1); box-shadow: 0 4px 15px rgba(239, 68, 68, 0.3); }
+    0% { 
+        transform: scale(1); 
+        box-shadow: 
+            0 4px 15px rgba(114, 47, 55, 0.3),
+            0 0 0 2px rgba(114, 47, 55, 0.4),
+            0 0 20px rgba(114, 47, 55, 0.5),
+            0 0 30px rgba(107, 15, 26, 0.4);
+    }
+    50% { 
+        transform: scale(1.03); 
+        box-shadow: 
+            0 6px 20px rgba(114, 47, 55, 0.4),
+            0 0 0 3px rgba(114, 47, 55, 0.6),
+            0 0 30px rgba(114, 47, 55, 0.7),
+            0 0 40px rgba(107, 15, 26, 0.5);
+    }
+    100% { 
+        transform: scale(1); 
+        box-shadow: 
+            0 4px 15px rgba(114, 47, 55, 0.3),
+            0 0 0 2px rgba(114, 47, 55, 0.4),
+            0 0 20px rgba(114, 47, 55, 0.5),
+            0 0 30px rgba(107, 15, 26, 0.4);
+    }
 }
 
 .cta-shortcut {

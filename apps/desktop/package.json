@@ -9,14 +9,16 @@
         "typecheck": "tsc --noEmit",
         "copy-migrations": "mkdir -p dist/main/database/migrations && cp -r src/main/database/migrations/*.js dist/main/database/migrations/ 2>/dev/null || true",
         "build-worker": "mkdir -p dist/main/stt/workers && npx tsc src/main/stt/workers/sttWorker.ts src/main/stt/workers/fileTranscriberWorker.ts --outDir dist/main/stt/workers --module commonjs --target es2020 --esModuleInterop --skipLibCheck --resolveJsonModule --moduleResolution node || true",
-        "rebuild:electron": "electron-rebuild -f -w better-sqlite3,vosk,ffi-napi,ref-napi,sharp"
+        "rebuild:electron": "electron-rebuild -f -w better-sqlite3,vosk,ffi-napi,ref-napi,sharp,@nut-tree-fork/nut-js"
     },
     "dependencies": {
         "@electron-toolkit/preload": "^2.0.0",
         "@electron-toolkit/utils": "^2.0.0",
+        "@nut-tree-fork/nut-js": "^4.2.6",
         "@ricky/config": "workspace:*",
         "@ricky/logger": "workspace:*",
         "@ricky/shared": "workspace:*",
+        "@xyflow/react": "^12.10.0",
         "better-sqlite3": "^9.0.0",
         "electron-store": "^8.1.0",
         "electron-updater": "^6.1.7",
@@ -26,7 +28,8 @@
         "sharp": "^0.33.0",
         "tesseract.js": "^7.0.0",
         "vosk": "^0.3.39",
-        "ws": "^8.14.0"
+        "ws": "^8.14.0",
+        "zod": "^3.25.76"
     },
     "devDependencies": {
         "@types/better-sqlite3": "^7.6.13",

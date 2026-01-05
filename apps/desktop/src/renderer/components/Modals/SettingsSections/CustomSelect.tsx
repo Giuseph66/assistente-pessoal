@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 
 export interface CustomSelectProps {
-    options: string[];
+    options: string[] | { label: string; value: string }[];
     value: string;
     onChange: (value: string) => void;
     icon?: React.ReactNode;
@@ -10,6 +10,15 @@ export interface CustomSelectProps {
 export const CustomSelect: React.FC<CustomSelectProps> = ({ options, value, onChange, icon }) => {
     const [isOpen, setIsOpen] = useState(false);
     const selectRef = useRef<HTMLDivElement>(null);
+
+    // Normaliza as opções para o formato { label, value }
+    const normalizedOptions = options.map(opt => 
+        typeof opt === 'string' ? { label: opt, value: opt } : opt
+    );
+
+    // Encontra o label da opção selecionada
+    const selectedOption = normalizedOptions.find(opt => opt.value === value);
+    const displayLabel = selectedOption ? selectedOption.label : value;
 
     useEffect(() => {
         const handleClickOutside = (event: MouseEvent) => {
@@ -26,7 +35,7 @@ export const CustomSelect: React.FC<CustomSelectProps> = ({ options, value, onCh
             <div className={`select-wrapper ${isOpen ? 'open' : ''}`} onClick={() => setIsOpen(!isOpen)}>
                 <div className="select-content">
                     {icon}
-                    <span>{value}</span>
+                    <span>{displayLabel}</span>
                 </div>
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className={`chevron ${isOpen ? 'up' : ''}`}>
                     <path d="M6 9l6 6 6-6" />
@@ -34,17 +43,17 @@ export const CustomSelect: React.FC<CustomSelectProps> = ({ options, value, onCh
             </div>
             {isOpen && (
                 <div className="custom-select-options">
-                    {options.map((option) => (
+                    {normalizedOptions.map((option) => (
                         <div
-                            key={option}
-                            className={`custom-select-option ${option === value ? 'active' : ''}`}
+                            key={option.value}
+                            className={`custom-select-option ${option.value === value ? 'active' : ''}`}
                             onClick={() => {
-                                onChange(option);
+                                onChange(option.value);
                                 setIsOpen(false);
                             }}
                         >
-                            {option}
-                            {option === value && <span className="check-icon">✓</span>}
+                            {option.label}
+                            {option.value === value && <span className="check-icon">✓</span>}
                         </div>
                     ))}
                 </div>

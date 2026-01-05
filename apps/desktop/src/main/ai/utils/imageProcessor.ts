@@ -7,8 +7,8 @@ import { app } from 'electron';
 
 const logger = getLogger();
 
-sharp.cache(false);
-sharp.concurrency(1);
+// NOTA: sharp.cache(false) e sharp.concurrency(1) removidos
+// pois causavam crash fatal com libvips em algumas versões
 
 /**
  * Comprime imagem se necessário, mantendo aspect ratio

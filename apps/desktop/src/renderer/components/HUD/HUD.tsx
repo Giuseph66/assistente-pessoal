@@ -259,10 +259,50 @@ export const HUD: React.FC<HUDProps> = ({
             await fetchSessions();
         }
 
-        // Obtém a posição do clique
-        const rect = event.currentTarget.getBoundingClientRect();
-        const x = rect.left + rect.width / 2; // Centro do botão
-        const y = rect.top; // Topo do botão
+        // Obtém a posição do clique - usa múltiplas estratégias para garantir que funciona
+        let x: number;
+        let y: number;
+
+        // Estratégia 1: Tentar usar getBoundingClientRect do elemento clicado
+        if (event.currentTarget) {
+            try {
+                const rect = event.currentTarget.getBoundingClientRect();
+                if (rect.width > 0 && rect.height > 0) {
+                    x = rect.left + rect.width / 2; // Centro do botão
+                    y = rect.top; // Topo do botão
+                } else {
+                    throw new Error('Element has zero dimensions');
+                }
+            } catch (error) {
+                // Se getBoundingClientRect falhar, usar posição do mouse
+                x = event.clientX;
+                y = event.clientY;
+            }
+        } 
+        // Estratégia 2: Usar posição do mouse (clientX/clientY)
+        else if (event.clientX !== undefined && event.clientY !== undefined) {
+            x = event.clientX;
+            y = event.clientY;
+        }
+        // Estratégia 3: Usar ref do elemento se disponível
+        else if (personalityDropdownRef.current) {
+            try {
+                const rect = personalityDropdownRef.current.getBoundingClientRect();
+                x = rect.left + rect.width / 2;
+                y = rect.top;
+            } catch (error) {
+                // Se tudo falhar, usar posição padrão (centro da tela)
+                console.warn('Could not determine dropdown position, using default');
+                x = window.innerWidth / 2;
+                y = 100;
+            }
+        }
+        // Estratégia 4: Fallback para posição padrão
+        else {
+            console.warn('Could not determine dropdown position, using default');
+            x = window.innerWidth / 2;
+            y = 100;
+        }
 
         // Prepara dados para enviar
         const dropdownData = {
@@ -376,9 +416,13 @@ export const HUD: React.FC<HUDProps> = ({
         }
     };
 
-    const handleListeningToggle = () => {
+    const handleListeningToggle = async () => {
         if (isSttListening) {
-            window.electron.ipcRenderer.send('session:stop-listening');
+            try {
+                await window.stt.stop();
+            } catch (error) {
+                console.error('Falha ao parar STT:', error);
+            }
             return;
         }
         onStartListening();
@@ -388,6 +432,18 @@ export const HUD: React.FC<HUDProps> = ({
         hudPartial && isSttListening
             ? inputValue + (inputValue && !inputValue.endsWith(' ') ? ' ' : '') + hudPartial
             : inputValue;
+
+    // Sincroniza o texto completo (incluindo parciais do STT) com o main process para o atalho de colar
+    // SEM debounce (para testar instantâneo)
+    useEffect(() => {
+        const fullText = hudPartial && isSttListening
+            ? inputValue + (inputValue && !inputValue.endsWith(' ') ? ' ' : '') + hudPartial
+            : inputValue;
+
+        if (typeof window !== 'undefined' && (window as any).electron?.ipcRenderer) {
+            (window as any).electron.ipcRenderer.send('stt-input:update', fullText);
+        }
+    }, [inputValue, hudPartial, isSttListening]);
 
     return (
         <div className="hud-container">
@@ -483,17 +539,32 @@ export const HUD: React.FC<HUDProps> = ({
                         className="hud-input"
                     />
                     {inputValue.trim().length > 0 && (
-                        <button
-                            className="hud-send-btn"
-                            onClick={handleHudQuestionSend}
-                            disabled={isSendingQuestion}
-                            title="Enviar"
-                        >
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                                <path d="M22 2L11 13" />
-                                <path d="M22 2l-7 20-4-9-9-4 20-7z" />
-                            </svg>
-                        </button>
+                        <>
+                            <button
+                                className="hud-clear-btn"
+                                onClick={() => {
+                                    setInputValue('');
+                                    setHudPartial('');
+                                }}
+                                title="Limpar"
+                            >
+                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                                    <line x1="18" y1="6" x2="6" y2="18" />
+                                    <line x1="6" y1="6" x2="18" y2="18" />
+                                </svg>
+                            </button>
+                            <button
+                                className="hud-send-btn"
+                                onClick={handleHudQuestionSend}
+                                disabled={isSendingQuestion}
+                                title="Enviar"
+                            >
+                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                                    <path d="M22 2L11 13" />
+                                    <path d="M22 2l-7 20-4-9-9-4 20-7z" />
+                                </svg>
+                            </button>
+                        </>
                     )}
                 </div>
 
@@ -501,6 +572,7 @@ export const HUD: React.FC<HUDProps> = ({
                 <button
                     className={`hud-cta ${isSttListening ? 'active' : ''}`}
                     onClick={handleListeningToggle}
+                    title={isSttListening ? 'Parar de ouvir' : 'Começar a ouvir'}
                 >
                     {isSttListening ? (
                         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -510,15 +582,12 @@ export const HUD: React.FC<HUDProps> = ({
                             <line x1="8" y1="23" x2="16" y2="23" />
                         </svg>
                     ) : (
-                        <>
-                            <span className="cta-text">Começar a Ouvir</span>
-                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
-                                <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
-                                <line x1="12" y1="19" x2="12" y2="23" />
-                                <line x1="8" y1="23" x2="16" y2="23" />
-                            </svg>
-                        </>
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
+                            <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
+                            <line x1="12" y1="19" x2="12" y2="23" />
+                            <line x1="8" y1="23" x2="16" y2="23" />
+                        </svg>
                     )}
                 </button>
 

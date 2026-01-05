@@ -66,8 +66,32 @@ export function setupErrorHandlers(): void {
       }
     }
     
+    // Extrair informação útil do motivo
+    let reasonInfo: any;
+    if (reason instanceof Error) {
+      reasonInfo = {
+        name: reason.name,
+        message: reason.message,
+        stack: reason.stack,
+      };
+    } else if (reason !== null && typeof reason === 'object') {
+      // Tentar serializar o objeto
+      try {
+        reasonInfo = {
+          type: typeof reason,
+          constructor: reason?.constructor?.name,
+          keys: Object.keys(reason),
+          stringified: JSON.stringify(reason, null, 2)?.substring(0, 500),
+        };
+      } catch {
+        reasonInfo = { type: typeof reason, value: String(reason) };
+      }
+    } else {
+      reasonInfo = { type: typeof reason, value: String(reason) };
+    }
+    
     logger.error(
-      { reason, promise },
+      { reason: reasonInfo, promiseInfo: promise?.toString?.()?.substring(0, 200) },
       'Unhandled promise rejection'
     );
   });

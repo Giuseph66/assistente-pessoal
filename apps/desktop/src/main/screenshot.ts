@@ -1,7 +1,8 @@
 import { desktopCapturer, screen, nativeImage, ipcMain } from 'electron';
-import { writeFile, mkdir, rename, unlink } from 'fs/promises';
+import { writeFile, mkdir, rename, unlink, readFile, stat } from 'fs/promises';
 import { join } from 'path';
 import { homedir } from 'os';
+import { pathToFileURL } from 'url';
 import { existsSync } from 'fs';
 import { getConfigManager } from '@ricky/config';
 import { getLogger } from '@ricky/logger';
@@ -188,10 +189,10 @@ export async function captureScreenshot(
       const { x, y, width, height } = options.region;
       const localX = x - targetDisplay.bounds.x;
       const localY = y - targetDisplay.bounds.y;
-      const scaledX = Math.round(localX * scaleFactor);
-      const scaledY = Math.round(localY * scaleFactor);
-      const scaledWidth = Math.round(width * scaleFactor);
-      const scaledHeight = Math.round(height * scaleFactor);
+      const scaledX = Math.floor(localX * scaleFactor);
+      const scaledY = Math.floor(localY * scaleFactor);
+      const scaledWidth = Math.ceil(width * scaleFactor);
+      const scaledHeight = Math.ceil(height * scaleFactor);
 
       logger.debug(
         { scaledX, scaledY, scaledWidth, scaledHeight, imgSize },
@@ -485,7 +486,7 @@ function saveLastCaptureRegion(region: LastCaptureRegion): void {
   config.set('screenshots', 'lastRegion', region);
 }
 
-type ScreenshotSelectorAction = 'confirm' | 'cancel';
+type ScreenshotSelectorAction = 'single' | 'long' | 'finish' | 'cancel';
 
 type ScreenshotSelectorResult = {
   token: string;
@@ -495,7 +496,389 @@ type ScreenshotSelectorResult = {
   displayId?: number;
 };
 
-async function selectScreenshotRegion(lastRegion: LastCaptureRegion | null): Promise<LastCaptureRegion | null> {
+type SelectorMode = 'initial' | 'long';
+
+type SelectRegionOptions = {
+  mode?: SelectorMode;
+  sessionId?: string;
+  lockSelection?: boolean;
+  longCaptureSupported?: boolean;
+  longCaptureReason?: string;
+};
+
+type SelectedRegionResult = {
+  region: LastCaptureRegion;
+  action: Exclude<ScreenshotSelectorAction, 'cancel'>;
+};
+
+type LongCaptureSupport = {
+  supported: boolean;
+  reason?: string;
+};
+
+type LongCaptureSession = {
+  id: string;
+  region: LastCaptureRegion;
+  format: 'png' | 'jpg';
+  quality: number;
+  compositePath: string | null;
+  width: number;
+  height: number;
+  monitorIndex?: number;
+  displayId?: number;
+  db?: DatabaseManager;
+  busy: boolean;
+  canAppend: boolean;
+  longDisabledReason?: string;
+};
+
+const SCROLL_STEP_PX = 120;
+
+let activeLongSession: LongCaptureSession | null = null;
+
+const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+function isScreenshotResult(value: LongCaptureSession | ScreenshotResult): value is ScreenshotResult {
+  return typeof (value as ScreenshotResult).success === 'boolean';
+}
+
+async function getLongCaptureSupport(): Promise<LongCaptureSupport> {
+  if (detectDisplayServer() !== 'x11') {
+    return { supported: false, reason: 'Indisponivel no Wayland' };
+  }
+  const hasXdotool = await commandAvailable('xdotool');
+  if (!hasXdotool) {
+    return { supported: false, reason: 'Instale xdotool para captura longa' };
+  }
+  return { supported: true };
+}
+
+type ScreenshotPreviewSource = 'long' | 'single';
+
+type ScreenshotPreviewMeta = {
+  sessionId?: string;
+  source?: ScreenshotPreviewSource;
+};
+
+async function showScreenshotPreview(
+  filePath: string,
+  displayId?: number,
+  monitorIndex?: number,
+  meta?: ScreenshotPreviewMeta
+): Promise<void> {
+  const overlayManager = getOverlayManager();
+  const displays = screen.getAllDisplays();
+  let targetDisplay = screen.getPrimaryDisplay();
+
+  if (displayId) {
+    const matched = displays.find((display) => display.id === displayId);
+    if (matched) targetDisplay = matched;
+  } else if (typeof monitorIndex === 'number' && displays[monitorIndex]) {
+    targetDisplay = displays[monitorIndex];
+  }
+
+  overlayManager.showScreenshotPreviewWindow(targetDisplay);
+  const win = overlayManager.getScreenshotPreviewWindow();
+  if (!win || win.isDestroyed()) return;
+
+  const itemId = meta?.sessionId || `preview-${Date.now()}-${Math.floor(Math.random() * 1_000_000)}`;
+  const payload = {
+    item: {
+      id: itemId,
+      sessionId: meta?.sessionId,
+      filePath,
+      fileUrl: pathToFileURL(filePath).toString(),
+      createdAt: Date.now(),
+      source: meta?.source ?? 'single',
+    },
+  };
+  const sendPayload = () => {
+    if (!win || win.isDestroyed()) return;
+    win.webContents.send('screenshot-preview:data', payload);
+  };
+
+  if (win.webContents.isLoadingMainFrame()) {
+    win.webContents.once('did-finish-load', sendPayload);
+  } else {
+    sendPayload();
+  }
+}
+
+async function scrollRegionDown(region: LastCaptureRegion): Promise<boolean> {
+  if (detectDisplayServer() !== 'x11') return false;
+  if (!(await commandAvailable('xdotool'))) return false;
+
+  const centerX = Math.round(region.x + region.width / 2);
+  const centerY = Math.round(region.y + region.height / 2);
+  const steps = Math.max(1, Math.round(region.height / SCROLL_STEP_PX));
+
+  const moveResult = await runCommand('xdotool', ['mousemove', '--sync', String(centerX), String(centerY)]);
+  if (moveResult.code !== 0) return false;
+
+  const scrollResult = await runCommand('xdotool', ['click', '--repeat', String(steps), '--delay', '12', '5']);
+  return scrollResult.code === 0;
+}
+
+async function appendImagesVertical(
+  basePath: string,
+  appendPath: string,
+  format: 'png' | 'jpg',
+  quality: number,
+  savePath: string
+): Promise<{ path: string; width: number; height: number }> {
+  const baseBuffer = await readFile(basePath);
+  const appendBuffer = await readFile(appendPath);
+  const baseImage = nativeImage.createFromBuffer(baseBuffer);
+  const appendImage = nativeImage.createFromBuffer(appendBuffer);
+  if (baseImage.isEmpty() || appendImage.isEmpty()) {
+    throw new Error('invalid image buffer');
+  }
+  const baseSize = baseImage.getSize();
+  const appendSize = appendImage.getSize();
+  if (!baseSize.width || !baseSize.height || !appendSize.width || !appendSize.height) {
+    throw new Error('invalid image dimensions');
+  }
+
+  const outputWidth = Math.max(baseSize.width, appendSize.width);
+  const outputHeight = baseSize.height + appendSize.height;
+  if (!outputWidth || !outputHeight) {
+    throw new Error('invalid composite size');
+  }
+
+  const outputBuffer = Buffer.alloc(outputWidth * outputHeight * 4, 0);
+  const baseBitmap = baseImage.toBitmap();
+  const appendBitmap = appendImage.toBitmap();
+
+  const copyBitmap = (bitmap: Buffer, width: number, height: number, offsetY: number) => {
+    const srcStride = width * 4;
+    const destStride = outputWidth * 4;
+    for (let row = 0; row < height; row += 1) {
+      const srcStart = row * srcStride;
+      const destStart = (offsetY + row) * destStride;
+      bitmap.copy(outputBuffer, destStart, srcStart, srcStart + srcStride);
+    }
+  };
+
+  copyBitmap(baseBitmap, baseSize.width, baseSize.height, 0);
+  copyBitmap(appendBitmap, appendSize.width, appendSize.height, baseSize.height);
+
+  const compositeImage = nativeImage.createFromBitmap(outputBuffer, {
+    width: outputWidth,
+    height: outputHeight,
+  });
+
+  const filename = generateFilename(format);
+  const filePath = join(savePath, filename);
+  const outputEncoded = format === 'jpg' ? compositeImage.toJPEG(quality) : compositeImage.toPNG();
+  await writeFile(filePath, outputEncoded);
+
+  return { path: filePath, width: outputWidth, height: outputHeight };
+}
+
+async function captureRegionOnce(region: LastCaptureRegion): Promise<ScreenshotResult> {
+  return captureScreenshot({
+    mode: 'area',
+    region: {
+      x: region.x,
+      y: region.y,
+      width: region.width,
+      height: region.height,
+    },
+    monitorIndex: region.monitorIndex,
+  });
+}
+
+async function startLongCaptureSession(
+  region: LastCaptureRegion,
+  db?: DatabaseManager
+): Promise<LongCaptureSession | ScreenshotResult> {
+  if (activeLongSession) {
+    return { success: false, error: 'Captura longa ja em andamento' };
+  }
+
+  const format = config.get('screenshots', 'format');
+  const quality = config.get('screenshots', 'quality');
+  const session: LongCaptureSession = {
+    id: `long-${Date.now()}-${Math.floor(Math.random() * 1_000_000)}`,
+    region,
+    format,
+    quality,
+    compositePath: null,
+    width: 0,
+    height: 0,
+    monitorIndex: region.monitorIndex,
+    displayId: region.displayId,
+    db,
+    busy: false,
+    canAppend: true,
+  };
+  activeLongSession = session;
+
+  const first = await captureRegionOnce(region);
+  if (!first.success || !first.path) {
+    activeLongSession = null;
+    return first;
+  }
+
+  session.compositePath = first.path;
+  session.width = first.width || 0;
+  session.height = first.height || 0;
+  session.monitorIndex = first.monitorIndex ?? session.monitorIndex;
+  session.displayId = first.displayId ?? session.displayId;
+
+  const scrolled = await scrollRegionDown(region);
+  session.canAppend = scrolled;
+  session.longDisabledReason = scrolled ? undefined : 'Nao foi possivel scrollar. Verifique o foco.';
+
+  await showScreenshotPreview(first.path, session.displayId, session.monitorIndex, {
+    sessionId: session.id,
+    source: 'long',
+  });
+
+  return session;
+}
+
+async function appendLongCapture(session: LongCaptureSession): Promise<void> {
+  if (session.busy || !session.canAppend || !session.compositePath) return;
+  session.busy = true;
+
+  const overlayManager = getOverlayManager();
+  const previewWindow = overlayManager.getScreenshotPreviewWindow();
+  if (previewWindow && !previewWindow.isDestroyed()) {
+    previewWindow.hide();
+  }
+
+  await delay(220);
+
+  const capture = await captureRegionOnce(session.region);
+  if (!capture.success || !capture.path) {
+    session.busy = false;
+    if (previewWindow && !previewWindow.isDestroyed()) {
+      previewWindow.show();
+    }
+    return;
+  }
+
+  try {
+    const savePath = await getScreenshotPath();
+    const merged = await appendImagesVertical(
+      session.compositePath,
+      capture.path,
+      session.format,
+      session.quality,
+      savePath
+    );
+
+    await Promise.all([
+      unlink(session.compositePath).catch(() => undefined),
+      unlink(capture.path).catch(() => undefined),
+    ]);
+
+    session.compositePath = merged.path;
+    session.width = merged.width;
+    session.height = merged.height;
+    session.monitorIndex = capture.monitorIndex ?? session.monitorIndex;
+    session.displayId = capture.displayId ?? session.displayId;
+
+    const scrolled = await scrollRegionDown(session.region);
+    session.canAppend = scrolled;
+    session.longDisabledReason = scrolled ? undefined : 'Nao foi possivel scrollar. Verifique o foco.';
+
+    await showScreenshotPreview(merged.path, session.displayId, session.monitorIndex, {
+      sessionId: session.id,
+      source: 'long',
+    });
+  } catch (error: any) {
+    logger.error({ err: error }, 'Failed to append long screenshot');
+    if (capture.path) {
+      await unlink(capture.path).catch(() => undefined);
+    }
+    if (session.compositePath) {
+      await showScreenshotPreview(session.compositePath, session.displayId, session.monitorIndex, {
+        sessionId: session.id,
+        source: 'long',
+      });
+    }
+  } finally {
+    session.busy = false;
+  }
+}
+
+async function finishLongCapture(session: LongCaptureSession): Promise<ScreenshotResult> {
+  if (!activeLongSession || activeLongSession.id !== session.id) {
+    return { success: false, error: 'Sessao longa nao encontrada' };
+  }
+  if (session.busy) {
+    return { success: false, error: 'Captura longa em andamento' };
+  }
+  session.canAppend = false;
+
+  const compositePath = session.compositePath;
+  if (!compositePath) {
+    activeLongSession = null;
+    return { success: false, error: 'Nenhuma captura longa' };
+  }
+
+  let width = session.width;
+  let height = session.height;
+  if (!width || !height) {
+    const image = nativeImage.createFromPath(compositePath);
+    const size = image.getSize();
+    width = size.width;
+    height = size.height;
+  }
+
+  let screenshotId: number | undefined;
+  if (session.db) {
+    const fileStats = await stat(compositePath);
+    screenshotId = session.db.saveScreenshot({
+      file_path: compositePath,
+      file_size: fileStats.size,
+      width,
+      height,
+      mode: 'area',
+      source_app: 'long-screenshot',
+      monitor_index: session.monitorIndex,
+      created_at: Date.now(),
+    });
+  }
+
+  const result: ScreenshotResult = {
+    success: true,
+    path: compositePath,
+    width,
+    height,
+    screenshotId,
+    monitorIndex: session.monitorIndex,
+    displayId: session.displayId,
+    region: {
+      x: session.region.x,
+      y: session.region.y,
+      width: session.region.width,
+      height: session.region.height,
+    },
+  };
+
+  activeLongSession = null;
+  return result;
+}
+
+async function cancelLongCapture(session: LongCaptureSession): Promise<ScreenshotResult> {
+  if (session.compositePath) {
+    await unlink(session.compositePath).catch(() => undefined);
+  }
+  const previewWindow = getOverlayManager().getScreenshotPreviewWindow();
+  if (previewWindow && !previewWindow.isDestroyed()) {
+    previewWindow.hide();
+  }
+  activeLongSession = null;
+  return { success: false, error: 'Selecao cancelada' };
+}
+
+async function selectScreenshotRegion(
+  lastRegion: LastCaptureRegion | null,
+  options?: SelectRegionOptions
+): Promise<SelectedRegionResult | null> {
   const overlayManager = getOverlayManager();
   const displays = screen.getAllDisplays();
   const cursor = screen.getCursorScreenPoint();
@@ -520,11 +903,12 @@ async function selectScreenshotRegion(lastRegion: LastCaptureRegion | null): Pro
   return new Promise((resolve) => {
     let resolved = false;
 
-    const cleanup = (result: LastCaptureRegion | null) => {
+    const cleanup = (result: SelectedRegionResult | null) => {
       if (resolved) return;
       resolved = true;
       ipcMain.removeListener('screenshot-selector:result', onResult);
       if (win && !win.isDestroyed()) {
+        win.hide();
         win.close();
       }
       resolve(result);
@@ -532,14 +916,17 @@ async function selectScreenshotRegion(lastRegion: LastCaptureRegion | null): Pro
 
     const onResult = (_event: Electron.IpcMainEvent, payload: ScreenshotSelectorResult) => {
       if (payload?.token !== token) return;
-      if (payload.action === 'confirm' && payload.region) {
+      if ((payload.action === 'single' || payload.action === 'long' || payload.action === 'finish') && payload.region) {
         cleanup({
-          x: payload.region.x,
-          y: payload.region.y,
-          width: payload.region.width,
-          height: payload.region.height,
-          monitorIndex: payload.monitorIndex ?? displayIndex,
-          displayId: payload.displayId ?? targetDisplay.id,
+          region: {
+            x: payload.region.x,
+            y: payload.region.y,
+            width: payload.region.width,
+            height: payload.region.height,
+            monitorIndex: payload.monitorIndex ?? displayIndex,
+            displayId: payload.displayId ?? targetDisplay.id,
+          },
+          action: payload.action,
         });
         return;
       }
@@ -551,7 +938,15 @@ async function selectScreenshotRegion(lastRegion: LastCaptureRegion | null): Pro
     ipcMain.on('screenshot-selector:result', onResult);
     win.once('closed', onClosed);
 
-    const sendPayload = () => {
+    const sendPayload = async () => {
+      if (win.isDestroyed()) {
+        cleanup(null);
+        return;
+      }
+      const longSupport = options?.longCaptureSupported !== undefined
+        ? { supported: options.longCaptureSupported, reason: options.longCaptureReason }
+        : await getLongCaptureSupport();
+      const mode = options?.mode ?? 'initial';
       if (win.isDestroyed()) {
         cleanup(null);
         return;
@@ -562,48 +957,156 @@ async function selectScreenshotRegion(lastRegion: LastCaptureRegion | null): Pro
         lastRegion,
         displayId: targetDisplay.id,
         monitorIndex: displayIndex,
+        longCaptureSupported: longSupport.supported,
+        longCaptureReason: longSupport.reason,
+        mode,
+        sessionId: options?.sessionId,
+        lockSelection: options?.lockSelection,
       });
     };
 
     if (win.webContents.isLoadingMainFrame()) {
-      win.webContents.once('did-finish-load', sendPayload);
+      win.webContents.once('did-finish-load', () => { void sendPayload(); });
     } else {
-      sendPayload();
+      void sendPayload();
     }
   });
 }
 
 export async function captureAreaInteractiveConfirmed(db?: DatabaseManager): Promise<ScreenshotResult> {
+  const overlayManager = getOverlayManager();
+  const previewWindow = overlayManager.getScreenshotPreviewWindow();
+  const previewWasVisible = Boolean(previewWindow && !previewWindow.isDestroyed() && previewWindow.isVisible());
+  if (previewWasVisible) {
+    previewWindow?.hide();
+  }
+
   const lastRegion = getLastCaptureRegion();
-  const selectedRegion = await selectScreenshotRegion(lastRegion);
+  const selectedRegion = await selectScreenshotRegion(lastRegion, { mode: 'initial' });
   if (!selectedRegion) {
+    if (previewWasVisible && previewWindow && !previewWindow.isDestroyed()) {
+      previewWindow.show();
+    }
     return { success: false, error: 'Selecao cancelada' };
   }
 
-  await new Promise((resolve) => setTimeout(resolve, 140));
+  const hudWasVisible = overlayManager.isHUDWindowVisible();
+  const miniWasVisible = overlayManager.isMiniHUDVisible();
 
-  const captureResult = await captureScreenshot(
-    {
-      mode: 'area',
-      region: {
-        x: selectedRegion.x,
-        y: selectedRegion.y,
-        width: selectedRegion.width,
-        height: selectedRegion.height,
+  if (selectedRegion.action === 'long') {
+    const longSupport = await getLongCaptureSupport();
+    if (!longSupport.supported) {
+      if (previewWasVisible && previewWindow && !previewWindow.isDestroyed()) {
+        previewWindow.show();
+      }
+      return { success: false, error: longSupport.reason || 'Captura longa indisponivel' };
+    }
+
+    overlayManager.setHUDWindowVisible(false);
+    overlayManager.setMiniHUDVisible(false);
+
+    await delay(260);
+
+    const started = await startLongCaptureSession(selectedRegion.region, db);
+    if (isScreenshotResult(started)) {
+      overlayManager.setHUDWindowVisible(hudWasVisible);
+      overlayManager.setMiniHUDVisible(miniWasVisible);
+      if (previewWasVisible && previewWindow && !previewWindow.isDestroyed()) {
+        previewWindow.show();
+      }
+      return started;
+    }
+
+    const session = started;
+
+    while (true) {
+      const nextAction = await selectScreenshotRegion(session.region, {
+        mode: 'long',
+        sessionId: session.id,
+        lockSelection: true,
+        longCaptureSupported: session.canAppend,
+        longCaptureReason: session.longDisabledReason,
+      });
+
+      if (!nextAction) {
+        const canceled = await cancelLongCapture(session);
+        overlayManager.setHUDWindowVisible(hudWasVisible);
+        overlayManager.setMiniHUDVisible(miniWasVisible);
+        return canceled;
+      }
+
+      if (nextAction.action === 'long') {
+        if (!session.canAppend) {
+          continue;
+        }
+        await delay(260);
+        await appendLongCapture(session);
+        continue;
+      }
+
+      if (nextAction.action === 'finish' || nextAction.action === 'single') {
+        const finished = await finishLongCapture(session);
+        overlayManager.setHUDWindowVisible(hudWasVisible);
+        overlayManager.setMiniHUDVisible(miniWasVisible);
+        if (finished.success) {
+          saveLastCaptureRegion({
+            x: session.region.x,
+            y: session.region.y,
+            width: session.region.width,
+            height: session.region.height,
+            monitorIndex: session.monitorIndex,
+            displayId: session.displayId,
+          });
+        }
+        return finished;
+      }
+    }
+  }
+
+  await delay(260);
+
+  overlayManager.setHUDWindowVisible(false);
+  overlayManager.setMiniHUDVisible(false);
+
+  let captureResult: ScreenshotResult;
+  try {
+    captureResult = await captureScreenshot(
+      {
+        mode: 'area',
+        region: {
+          x: selectedRegion.region.x,
+          y: selectedRegion.region.y,
+          width: selectedRegion.region.width,
+          height: selectedRegion.region.height,
+        },
+        monitorIndex: selectedRegion.region.monitorIndex,
       },
-      monitorIndex: selectedRegion.monitorIndex,
-    },
-    db
-  );
+      db
+    );
+  } finally {
+    overlayManager.setHUDWindowVisible(hudWasVisible);
+    overlayManager.setMiniHUDVisible(miniWasVisible);
+  }
+
+  if (captureResult.success && captureResult.path) {
+    await showScreenshotPreview(
+      captureResult.path,
+      captureResult.displayId ?? selectedRegion.region.displayId,
+      captureResult.monitorIndex ?? selectedRegion.region.monitorIndex,
+      { source: 'single' }
+    );
+  } else if (previewWasVisible && previewWindow && !previewWindow.isDestroyed()) {
+    previewWindow.show();
+  }
 
   if (captureResult.success) {
     saveLastCaptureRegion({
-      x: selectedRegion.x,
-      y: selectedRegion.y,
-      width: selectedRegion.width,
-      height: selectedRegion.height,
-      monitorIndex: selectedRegion.monitorIndex,
-      displayId: selectedRegion.displayId,
+      x: selectedRegion.region.x,
+      y: selectedRegion.region.y,
+      width: selectedRegion.region.width,
+      height: selectedRegion.region.height,
+      monitorIndex: selectedRegion.region.monitorIndex,
+      displayId: selectedRegion.region.displayId,
     });
   }
 

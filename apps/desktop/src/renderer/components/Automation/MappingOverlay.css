@@ -1,0 +1,152 @@
+.mapping-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 10000;
+  pointer-events: none;
+}
+
+.mapping-overlay-content {
+  position: absolute;
+  top: 20px;
+  left: 20px;
+  background-color: rgba(0, 0, 0, 0.9);
+  border: 2px solid rgba(100, 150, 255, 0.6);
+  border-radius: 12px;
+  padding: 20px;
+  min-width: 300px;
+  pointer-events: auto;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+}
+
+.mapping-overlay-info {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.mapping-coordinates {
+  font-size: 18px;
+  font-weight: 600;
+  color: #88b3ff;
+  padding: 12px;
+  background-color: rgba(100, 150, 255, 0.1);
+  border-radius: 8px;
+  text-align: center;
+}
+
+.mapping-instructions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 13px;
+  color: #cfcfcf;
+}
+
+.mapping-instructions p {
+  margin: 0;
+  padding: 6px 0;
+}
+
+.mapping-dialog {
+  margin-top: 16px;
+  padding: 16px;
+  background-color: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+}
+
+.mapping-dialog h4 {
+  margin: 0 0 12px 0;
+  font-size: 16px;
+  color: #f0f0f0;
+}
+
+.mapping-dialog p {
+  margin: 0 0 12px 0;
+  font-size: 13px;
+  color: #999;
+}
+
+.mapping-input {
+  width: 100%;
+  padding: 10px 12px;
+  background-color: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 6px;
+  color: #e0e0e0;
+  font-size: 14px;
+  margin-bottom: 12px;
+}
+
+.mapping-input:focus {
+  outline: none;
+  border-color: rgba(100, 150, 255, 0.5);
+  background-color: rgba(255, 255, 255, 0.12);
+}
+
+.mapping-dialog-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.mapping-region-capture {
+  margin-top: 16px;
+  padding: 16px;
+  background-color: rgba(100, 150, 255, 0.1);
+  border: 1px solid rgba(100, 150, 255, 0.3);
+  border-radius: 8px;
+}
+
+.btn {
+  padding: 8px 16px;
+  border: none;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-primary {
+  background-color: rgba(100, 150, 255, 0.3);
+  color: #88b3ff;
+  border: 1px solid rgba(100, 150, 255, 0.5);
+}
+
+.btn-primary:hover:not(:disabled) {
+  background-color: rgba(100, 150, 255, 0.4);
+}
+
+.btn-primary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btn-secondary {
+  background-color: rgba(255, 255, 255, 0.05);
+  color: #cfcfcf;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.btn-secondary:hover:not(:disabled) {
+  background-color: rgba(255, 255, 255, 0.08);
+}
+
+.btn-danger {
+  background-color: rgba(211, 47, 47, 0.3);
+  color: #ffbcbc;
+  border: 1px solid rgba(211, 47, 47, 0.5);
+}
+
+.btn-danger:hover:not(:disabled) {
+  background-color: rgba(211, 47, 47, 0.4);
+}
+
+.btn-sm {
+  padding: 6px 12px;
+  font-size: 12px;
+}
+

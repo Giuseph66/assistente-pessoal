@@ -9,6 +9,9 @@ import { VintageWindow } from './components/HUD/VintageWindow';
 import { MiniHUD } from './components/HUD/MiniHUD';
 import { TextHighlightOutput } from './components/TextHighlightOverlay/TextHighlightOutput';
 import { ScreenshotSelector } from './components/ScreenshotSelector/ScreenshotSelector';
+import { ScreenshotPreview } from './components/ScreenshotPreview/ScreenshotPreview';
+import { WorkflowEditorWindow } from './components/AutomationFlow/WorkflowEditorWindow';
+import { WindowControls } from './components/Layout/WindowControls';
 import { initSttStore } from './store/sttStore';
 import './styles/global.css';
 
@@ -49,7 +52,13 @@ function App(): JSX.Element {
                     onOpenSettings={() => window.electron.ipcRenderer.send('window:open-settings')}
                     onOpenHistory={() => window.electron.ipcRenderer.send('window:open-history')}
                     onOpenSessionPanel={() => window.electron.ipcRenderer.send('window:open-session')}
-                    onStartListening={() => window.electron.ipcRenderer.send('session:start-listening')}
+                    onStartListening={async () => {
+                        try {
+                            await window.stt.start();
+                        } catch (error) {
+                            console.error('Falha ao iniciar STT:', error);
+                        }
+                    }}
                     isListening={false} // Todo: Sync via IPC
                     onTriggerTextHighlight={() => window.electron.ipcRenderer.send('hud:trigger-text-highlight')}
                 />
@@ -61,9 +70,9 @@ function App(): JSX.Element {
         return <HUDDropdown
             personalities={[]}
             sessions={[]}
-            onPersonalitySelect={() => {}}
-            onSessionSelect={() => {}}
-            onCreateSession={() => {}}
+            onPersonalitySelect={() => { }}
+            onSessionSelect={() => { }}
+            onCreateSession={() => { }}
         />;
     }
 
@@ -82,7 +91,7 @@ function App(): JSX.Element {
     }
 
     if (route === '#mini-hud') {
-        return(<div style={{
+        return (<div style={{
             width: '100vw',
             height: '100vh',
             display: 'flex',
@@ -100,8 +109,20 @@ function App(): JSX.Element {
         return <ScreenshotSelector />;
     }
 
-        // Default to OverlayContainer (Main Session Window)
-        return <OverlayContainer />;
+    if (route === '#screenshot-preview') {
+        return <ScreenshotPreview />;
     }
 
-    export default App;
+    if (route.startsWith('#workflow-editor')) {
+        return (
+            <WindowControls title="Workflow Editor" onClose={() => window.close()} onMinimize={() => window.electron.ipcRenderer.send('window:minimize')} onMaximize={() => window.electron.ipcRenderer.send('window:maximize')}>
+                <WorkflowEditorWindow />
+            </WindowControls>
+        );
+    }
+
+    // Default to OverlayContainer (Main Session Window)
+    return <OverlayContainer />;
+}
+
+export default App;

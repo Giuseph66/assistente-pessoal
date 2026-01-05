@@ -70,7 +70,7 @@ export interface AIApiKey {
     updated_at: number;
 }
 
-export interface AISession {
+export interface DBAISession {
     id: number;
     screenshot_id: number | null;
     provider_id: string;
@@ -78,7 +78,7 @@ export interface AISession {
     created_at: number;
 }
 
-export interface AIMessage {
+export interface DBAIMessage {
     id: number;
     session_id: number;
     role: 'user' | 'assistant' | 'system';
@@ -87,7 +87,7 @@ export interface AIMessage {
     created_at: number;
 }
 
-export interface AIRun {
+export interface DBAIRun {
     id: number;
     session_id: number;
     provider_id: string;
@@ -100,7 +100,7 @@ export interface AIRun {
     created_at: number;
 }
 
-export interface PromptTemplate {
+export interface DBPromptTemplate {
     id: number;
     name: string;
     prompt_text: string;

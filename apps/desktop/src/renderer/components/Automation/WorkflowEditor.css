@@ -1,0 +1,327 @@
+.workflow-editor {
+  padding: 20px;
+  max-width: 1200px;
+  margin: 0 auto;
+  color: #e0e0e0;
+}
+
+.workflow-editor-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 24px;
+}
+
+.workflow-editor-header h2 {
+  margin: 0;
+  font-size: 24px;
+  color: #f0f0f0;
+}
+
+.workflow-editor-actions {
+  display: flex;
+  gap: 12px;
+}
+
+.workflow-editor-alert {
+  padding: 12px 16px;
+  border-radius: 8px;
+  margin-bottom: 20px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 14px;
+}
+
+.workflow-editor-alert-error {
+  background-color: rgba(211, 47, 47, 0.2);
+  border: 1px solid rgba(211, 47, 47, 0.5);
+  color: #ffbcbc;
+}
+
+.workflow-editor-form {
+  background-color: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  padding: 20px;
+  margin-bottom: 24px;
+}
+
+.workflow-editor-field {
+  margin-bottom: 20px;
+}
+
+.workflow-editor-field:last-child {
+  margin-bottom: 0;
+}
+
+.workflow-editor-field label {
+  display: block;
+  margin-bottom: 8px;
+  font-size: 14px;
+  color: #cfcfcf;
+  font-weight: 500;
+}
+
+.workflow-editor-input,
+.workflow-editor-textarea {
+  width: 100%;
+  padding: 10px 12px;
+  background-color: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  color: #e0e0e0;
+  font-size: 14px;
+  font-family: inherit;
+}
+
+.workflow-editor-input:focus,
+.workflow-editor-textarea:focus {
+  outline: none;
+  border-color: rgba(100, 150, 255, 0.5);
+  background-color: rgba(255, 255, 255, 0.08);
+}
+
+.workflow-editor-textarea {
+  resize: vertical;
+  min-height: 80px;
+}
+
+.workflow-editor-toggle {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+}
+
+.workflow-editor-toggle input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  cursor: pointer;
+}
+
+.workflow-editor-steps {
+  background-color: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  padding: 20px;
+}
+
+.workflow-editor-steps-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+}
+
+.workflow-editor-steps-header h3 {
+  margin: 0;
+  font-size: 18px;
+  color: #f0f0f0;
+}
+
+.workflow-editor-add-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.workflow-editor-empty {
+  padding: 40px;
+  text-align: center;
+  color: #999;
+}
+
+.workflow-editor-hint {
+  font-size: 12px;
+  color: #666;
+  margin-top: 8px;
+}
+
+.workflow-editor-steps-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.workflow-editor-step {
+  background-color: rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 8px;
+  padding: 12px;
+}
+
+.workflow-editor-step-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.workflow-editor-step-number {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  background-color: rgba(100, 150, 255, 0.2);
+  border: 1px solid rgba(100, 150, 255, 0.4);
+  border-radius: 50%;
+  font-size: 12px;
+  font-weight: 600;
+  color: #88b3ff;
+}
+
+.workflow-editor-step-type {
+  flex: 1;
+  font-size: 14px;
+  color: #cfcfcf;
+  text-transform: capitalize;
+}
+
+.workflow-editor-step-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.step-editor {
+  margin-top: 12px;
+  padding: 16px;
+  background-color: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+}
+
+.step-editor-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.step-editor-header h4 {
+  margin: 0;
+  font-size: 16px;
+  color: #f0f0f0;
+}
+
+.step-editor-params {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.step-editor-params label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 14px;
+  color: #cfcfcf;
+}
+
+.step-editor-params input,
+.step-editor-params select,
+.step-editor-params textarea {
+  padding: 8px 10px;
+  background-color: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 6px;
+  color: #e0e0e0;
+  font-size: 14px;
+  font-family: inherit;
+}
+
+/* Select "premium" (seta custom e hitbox melhor) */
+.step-editor-params select {
+  cursor: pointer;
+  padding-right: 36px;
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  background-image:
+    linear-gradient(45deg, transparent 50%, rgba(255, 255, 255, 0.55) 50%),
+    linear-gradient(135deg, rgba(255, 255, 255, 0.55) 50%, transparent 50%),
+    linear-gradient(to right, rgba(255,255,255,0.08), rgba(255,255,255,0.08));
+  background-position:
+    calc(100% - 18px) calc(50% - 2px),
+    calc(100% - 12px) calc(50% - 2px),
+    calc(100% - 32px) 50%;
+  background-size:
+    6px 6px,
+    6px 6px,
+    1px 18px;
+  background-repeat: no-repeat;
+}
+
+.step-editor-params select:hover {
+  border-color: rgba(100, 150, 255, 0.35);
+  background-color: rgba(255, 255, 255, 0.07);
+}
+
+.step-editor-params input:focus,
+.step-editor-params select:focus,
+.step-editor-params textarea:focus {
+  outline: none;
+  border-color: rgba(100, 150, 255, 0.5);
+  background-color: rgba(255, 255, 255, 0.08);
+}
+
+.step-editor-params textarea {
+  resize: vertical;
+  min-height: 60px;
+}
+
+.btn {
+  padding: 8px 16px;
+  border: none;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btn-primary {
+  background-color: rgba(100, 150, 255, 0.3);
+  color: #88b3ff;
+  border: 1px solid rgba(100, 150, 255, 0.5);
+}
+
+.btn-primary:hover:not(:disabled) {
+  background-color: rgba(100, 150, 255, 0.4);
+}
+
+.btn-secondary {
+  background-color: rgba(255, 255, 255, 0.05);
+  color: #cfcfcf;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.btn-secondary:hover:not(:disabled) {
+  background-color: rgba(255, 255, 255, 0.08);
+}
+
+.btn-danger {
+  background-color: rgba(211, 47, 47, 0.3);
+  color: #ffbcbc;
+  border: 1px solid rgba(211, 47, 47, 0.5);
+}
+
+.btn-danger:hover:not(:disabled) {
+  background-color: rgba(211, 47, 47, 0.4);
+}
+
+.btn-sm {
+  padding: 6px 12px;
+  font-size: 12px;
+}
+
+.btn-xs {
+  padding: 4px 8px;
+  font-size: 11px;
+}
+

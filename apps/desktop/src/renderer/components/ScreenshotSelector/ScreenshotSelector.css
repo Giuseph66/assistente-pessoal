@@ -10,6 +10,17 @@
   box-sizing: border-box;
 }
 
+.screenshot-selector--capturing {
+  background: transparent;
+  cursor: default;
+}
+
+.screenshot-selector--capturing .screenshot-selector__hint,
+.screenshot-selector--capturing .screenshot-selector__actions,
+.screenshot-selector--capturing .screenshot-selector__rect {
+  opacity: 0;
+}
+
 .screenshot-selector__hint {
   position: fixed;
   top: 20px;
@@ -20,6 +31,15 @@
   padding: 8px 12px;
   border-radius: 10px;
   font-size: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  transition: opacity 0.12s ease;
+}
+
+.screenshot-selector__hint-warning {
+  color: rgba(255, 180, 180, 0.9);
+  font-size: 11px;
 }
 
 .screenshot-selector__rect {
@@ -28,6 +48,7 @@
   background: rgba(124, 58, 237, 0.16);
   border-radius: 8px;
   box-shadow: 0 0 16px rgba(124, 58, 237, 0.35);
+  transition: opacity 0.12s ease;
 }
 
 .screenshot-selector__rect-label {
@@ -51,6 +72,7 @@
   border-radius: 14px;
   align-items: center;
   margin-bottom: 10px;
+  transition: opacity 0.12s ease;
 }
 
 .screenshot-selector__btn {
@@ -83,4 +105,13 @@
   background: transparent;
   border: 1px solid rgba(255, 255, 255, 0.12);
   color: rgba(255, 255, 255, 0.85);
+}
+
+.screenshot-selector__btn.icon {
+  padding: 8px 12px;
+  background: rgba(124, 58, 237, 0.2);
+  border: 1px solid rgba(124, 58, 237, 0.5);
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  font-size: 11px;
 }

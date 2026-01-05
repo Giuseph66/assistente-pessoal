@@ -84,12 +84,15 @@ export class OpenAIProvider extends BaseVisionProvider {
       }
     });
 
+    const maxTokens = this.normalizeMaxTokens(req.options?.maxTokens);
     const requestBody: any = {
       model: modelName,
       messages,
       temperature: req.options?.temperature ?? 0.7,
-      max_tokens: req.options?.maxTokens ?? 2048,
     };
+    if (typeof maxTokens === 'number') {
+      requestBody.max_tokens = maxTokens;
+    }
 
     const url = `${this.baseUrl}/chat/completions`;
 
@@ -170,12 +173,15 @@ export class OpenAIProvider extends BaseVisionProvider {
         });
       });
 
+    const maxTokens = this.normalizeMaxTokens(req.options?.maxTokens);
     const requestBody: any = {
       model: modelName,
       messages,
       temperature: req.options?.temperature ?? 0.7,
-      max_tokens: req.options?.maxTokens ?? 2048,
     };
+    if (typeof maxTokens === 'number') {
+      requestBody.max_tokens = maxTokens;
+    }
 
     const url = `${this.baseUrl}/chat/completions`;
 
@@ -233,6 +239,13 @@ export class OpenAIProvider extends BaseVisionProvider {
   private extractRecognizedText(content: string): string | undefined {
     // Se a resposta começa com algo como "Texto extraído:" ou similar, podemos tentar extrair
     // Por enquanto, retornamos undefined e deixamos o modelo fazer OCR
+    return undefined;
+  }
+
+  private normalizeMaxTokens(maxTokens?: number): number | undefined {
+    if (typeof maxTokens === 'number' && Number.isFinite(maxTokens) && maxTokens > 0) {
+      return Math.floor(maxTokens);
+    }
     return undefined;
   }
 }

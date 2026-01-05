@@ -217,12 +217,17 @@ export class GeminiProvider extends BaseVisionProvider {
     };
 
     const buildRequestBody = (includeSystemInstruction: boolean, injectSystemAsUser: boolean) => {
+      const generationConfig: any = {
+        temperature: req.options?.temperature ?? 0.7,
+      };
+      const maxTokens = this.normalizeMaxTokens(req.options?.maxTokens);
+      if (typeof maxTokens === 'number') {
+        generationConfig.maxOutputTokens = maxTokens;
+      }
+
       const requestBody: any = {
         contents: buildContents(injectSystemAsUser),
-        generationConfig: {
-          temperature: req.options?.temperature ?? 0.7,
-          maxOutputTokens: req.options?.maxTokens ?? 2048,
-        },
+        generationConfig,
       };
 
       if (includeSystemInstruction && systemMessage) {
@@ -326,12 +331,17 @@ export class GeminiProvider extends BaseVisionProvider {
     };
 
     const buildRequestBody = (includeSystemInstruction: boolean, injectSystemAsUser: boolean) => {
+      const generationConfig: any = {
+        temperature: req.options?.temperature ?? 0.7,
+      };
+      const maxTokens = this.normalizeMaxTokens(req.options?.maxTokens);
+      if (typeof maxTokens === 'number') {
+        generationConfig.maxOutputTokens = maxTokens;
+      }
+
       const requestBody: any = {
         contents: buildContents(injectSystemAsUser),
-        generationConfig: {
-          temperature: req.options?.temperature ?? 0.7,
-          maxOutputTokens: req.options?.maxTokens ?? 2048,
-        },
+        generationConfig,
       };
 
       if (includeSystemInstruction && systemMessage) {
@@ -429,6 +439,13 @@ export class GeminiProvider extends BaseVisionProvider {
     // Gemini pode retornar texto extraído em diferentes formatos
     // Por enquanto, retornamos undefined e deixamos o modelo fazer OCR
     // Futuramente, podemos usar a API de OCR específica se necessário
+    return undefined;
+  }
+
+  private normalizeMaxTokens(maxTokens?: number): number | undefined {
+    if (typeof maxTokens === 'number' && Number.isFinite(maxTokens) && maxTokens > 0) {
+      return Math.floor(maxTokens);
+    }
     return undefined;
   }
 }

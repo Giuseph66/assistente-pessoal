@@ -54,6 +54,20 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ sessionId }) => {
   const partialStateRef = useRef({ mic: '', micAt: 0, system: '', systemAt: 0 });
   const inputResizeRef = useRef<number | null>(null);
 
+  const [isActionMenuOpen, setIsActionMenuOpen] = useState(false);
+  const actionMenuRef = useRef<HTMLDivElement>(null);
+
+  // Close action menu when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (actionMenuRef.current && !actionMenuRef.current.contains(event.target as Node)) {
+        setIsActionMenuOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
   const mapMessages = (rows: any[]): Message[] =>
     rows
       .filter((msg) => msg.role === 'user' || msg.role === 'assistant')
@@ -626,6 +640,19 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ sessionId }) => {
 
   const hasPreview = !!(systemSttPartial || micSttPartial);
 
+  // Sincroniza o texto completo (incluindo parciais do STT) com o main process para o atalho de colar
+  // SEM debounce (para testar instantâneo)
+  useEffect(() => {
+    const activePartial = systemSttPartial || micSttPartial;
+    const fullText = activePartial
+      ? inputValue + (inputValue && !inputValue.endsWith(' ') ? ' ' : '') + activePartial
+      : inputValue;
+
+    if (typeof window !== 'undefined' && (window as any).electron?.ipcRenderer) {
+      (window as any).electron.ipcRenderer.send('stt-input:update', fullText);
+    }
+  }, [inputValue, systemSttPartial, micSttPartial]);
+
   // Minimize all windows
   const minimizeAllWindows = async () => {
     if (window.electron?.ipcRenderer) {
@@ -894,84 +921,181 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ sessionId }) => {
       </div>
 
       <div className="input-area-wrapper">
-        <div className="input-island">
-          <textarea
-            ref={inputRef}
-            value={getInputDisplayValue()}
-            onChange={(e) => {
-              const newValue = e.target.value;
-              const activePartial = systemSttPartial || micSttPartial;
+        <div className="input-container-outer">
+          {attachedImage && (
+            <div className="attached-image-preview">
+              <img src={attachedImage.base64} alt="Screenshot anexado" />
+              <button
+                className="remove-image-btn"
+                onClick={() => setAttachedImage(null)}
+                title="Remover imagem"
+              >
+                ✕
+              </button>
+            </div>
+          )}
 
-              if (activePartial) {
-                // User is editing - clear preview and commit their changes
-                setSystemSttPartial(null);
-                setMicSttPartial(null);
-                setInputValue(newValue);
-              } else {
-                // No preview, normal editing
-                setInputValue(newValue);
-              }
-            }}
-            onKeyDown={handleKeyDown}
-            placeholder="Digite sua mensagem..."
-            rows={1}
-            className={`chat-input ${hasPreview ? 'has-preview' : ''}`}
-          />
-          <button
-            className="send-btn"
-            onClick={handleSendMessage}
-            disabled={!inputValue.trim()}
-          >
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M22 2L11 13" />
-              <path d="M22 2L15 22L11 13L2 9L22 2Z" />
-            </svg>
-          </button>
-        </div>
-        <div className="input-actions">
-          <button
-            className={`action-pill ${isCapturing ? 'capturing' : ''}`}
-            onClick={handleAreaScreenshot}
-            disabled={isCapturing}
-            title="Capturar área da tela"
-          >
-            {isCapturing ? '⏳ Capturando...' : '📷 Imagem'}
-          </button>
-          <button
-            className={`action-pill ${isCapturing ? 'capturing' : ''}`}
-            onClick={handleFullscreenScreenshot}
-            disabled={isCapturing}
-            title="Capturar tela inteira"
-          >
-            {isCapturing ? '⏳ Capturando...' : '🖥️ Capturar'}
-          </button>
-          <button
-            className={`action-pill stt-button ${isSystemSttActive ? 'active' : ''}`}
-            onClick={toggleSystemStt}
-            title={isSystemSttActive ? 'Parar STT do Sistema' : 'Iniciar STT do Sistema'}
-          >
-            {isSystemSttActive ? '⏹️ Parar STT Sistema' : '🎤 STT Sistema'}
-          </button>
-          <button
-            className={`action-pill stt-button ${isMicSttActive ? 'active' : ''}`}
-            onClick={toggleMicStt}
-            title={isMicSttActive ? 'Parar STT do Microfone' : 'Iniciar STT do Microfone'}
-          >
-            {isMicSttActive ? '⏹️ Parar STT Mic' : '🎙️ STT Microfone'}
-          </button>
-        </div>
-        {attachedImage && (
-          <div className="attached-image-preview">
-            <img src={attachedImage.base64} alt="Screenshot anexado" />
-            <button
-              className="remove-image-btn"
-              onClick={() => setAttachedImage(null)}
-              title="Remover imagem"
-            >
-              ✕
-            </button>
+          <div className="input-island">
+            <div className="input-actions-left" ref={actionMenuRef}>
+              <button
+                className={`icon-btn action-trigger ${isActionMenuOpen ? 'active' : ''}`}
+                onClick={() => setIsActionMenuOpen(!isActionMenuOpen)}
+                title="Ações e Ferramentas"
+              >
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <line x1="12" y1="5" x2="12" y2="19"></line>
+                  <line x1="5" y1="12" x2="19" y2="12"></line>
+                </svg>
+              </button>
+
+              {isActionMenuOpen && (
+                <div className="action-menu-popover">
+                  <button
+                    className={`menu-item ${isCapturing ? 'loading' : ''}`}
+                    onClick={() => { handleAreaScreenshot(); setIsActionMenuOpen(false); }}
+                    disabled={isCapturing}
+                  >
+                    <span className="menu-icon">
+                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M21 11V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h6" />
+                        <path d="M16 19h6" />
+                        <path d="M19 16v6" />
+                      </svg>
+                    </span>
+                    <div className="menu-text">
+                      <span className="menu-title">Capturar Área</span>
+                      <span className="menu-desc">Selecione uma parte da tela</span>
+                    </div>
+                  </button>
+
+                  <button
+                    className={`menu-item ${isCapturing ? 'loading' : ''}`}
+                    onClick={() => { handleFullscreenScreenshot(); setIsActionMenuOpen(false); }}
+                    disabled={isCapturing}
+                  >
+                    <span className="menu-icon">
+                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <rect x="2" y="3" width="20" height="14" rx="2" ry="2" />
+                        <line x1="8" y1="21" x2="16" y2="21" />
+                        <line x1="12" y1="17" x2="12" y2="21" />
+                      </svg>
+                    </span>
+                    <div className="menu-text">
+                      <span className="menu-title">Tela Inteira</span>
+                      <span className="menu-desc">Captura todo o monitor</span>
+                    </div>
+                  </button>
+
+                  <div className="menu-divider"></div>
+
+                  <button
+                    className={`menu-item ${isSystemSttActive ? 'active' : ''}`}
+                    onClick={() => { toggleSystemStt(); setIsActionMenuOpen(false); }}
+                  >
+                    <span className="menu-icon">
+                      {isSystemSttActive ? (
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <rect x="4" y="4" width="16" height="16" rx="2" ry="2" />
+                        </svg>
+                      ) : (
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
+                          <path d="M19.07 4.93a10 10 0 0 1 0 14.14" />
+                          <path d="M15.54 8.46a5 5 0 0 1 0 7.07" />
+                        </svg>
+                      )}
+                    </span>
+                    <div className="menu-text">
+                      <span className="menu-title">Áudio do Sistema</span>
+                      <span className="menu-desc">{isSystemSttActive ? 'Parar transcrição' : 'Transcrever áudio interno'}</span>
+                    </div>
+                  </button>
+
+                  <button
+                    className={`menu-item ${isMicSttActive ? 'active' : ''}`}
+                    onClick={() => { toggleMicStt(); setIsActionMenuOpen(false); }}
+                  >
+                    <span className="menu-icon">
+                      {isMicSttActive ? (
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <rect x="4" y="4" width="16" height="16" rx="2" ry="2" />
+                        </svg>
+                      ) : (
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
+                          <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
+                          <line x1="12" y1="19" x2="12" y2="23" />
+                          <line x1="8" y1="23" x2="16" y2="23" />
+                        </svg>
+                      )}
+                    </span>
+                    <div className="menu-text">
+                      <span className="menu-title">Microfone</span>
+                      <span className="menu-desc">{isMicSttActive ? 'Parar transcrição' : 'Transcrever sua voz'}</span>
+                    </div>
+                  </button>
+                </div>
+              )}
+            </div>
+
+            <textarea
+              ref={inputRef}
+              value={getInputDisplayValue()}
+              onChange={(e) => {
+                const newValue = e.target.value;
+                const activePartial = systemSttPartial || micSttPartial;
+
+                if (activePartial) {
+                  setSystemSttPartial(null);
+                  setMicSttPartial(null);
+                  setInputValue(newValue);
+                } else {
+                  setInputValue(newValue);
+                }
+              }}
+              onKeyDown={handleKeyDown}
+              placeholder="Digite sua mensagem..."
+              rows={1}
+              className={`chat-input ${hasPreview ? 'has-preview' : ''}`}
+            />
+
+            <div className="input-actions-right">
+              <button
+                className={`icon-btn mic-btn ${isMicSttActive || isSystemSttActive ? 'active' : ''}`}
+                onClick={isSystemSttActive ? toggleSystemStt : toggleMicStt}
+                title={isMicSttActive || isSystemSttActive ? 'Parar Transcrição' : 'Iniciar Microfone'}
+              >
+                {isSystemSttActive ? (
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path>
+                    <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
+                    <line x1="12" y1="19" x2="12" y2="23"></line>
+                    <line x1="8" y1="23" x2="16" y2="23"></line>
+                  </svg>
+                ) : (
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path>
+                    <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
+                    <line x1="12" y1="19" x2="12" y2="23"></line>
+                    <line x1="8" y1="23" x2="16" y2="23"></line>
+                  </svg>
+                )}
+              </button>
+
+              <button
+                className="send-btn"
+                onClick={handleSendMessage}
+                disabled={!inputValue.trim() && !attachedImage}
+                title="Enviar mensagem"
+              >
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <line x1="22" y1="2" x2="11" y2="13"></line>
+                  <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+                </svg>
+              </button>
+            </div>
           </div>
-        )}
+        </div>
         {sttError && (
           <div className="stt-error-message">{sttError}</div>
         )}

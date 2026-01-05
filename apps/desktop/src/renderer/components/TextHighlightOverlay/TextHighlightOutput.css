@@ -91,3 +91,10 @@
   color: rgba(255, 255, 255, 0.5);
   font-size: 13px;
 }
+
+.text-highlight-output__provider-icon {
+  display: inline-flex;
+  vertical-align: text-bottom;
+  margin-left: 6px;
+  align-items: center;
+}

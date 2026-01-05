@@ -35,6 +35,8 @@ export const AppConfigSchema = z.object({
     panicMode: z.string().default('CommandOrControl+Alt+H'), // Botão de pânico
     textHighlight: z.string().default('Ctrl+E'),
     textHighlightClear: z.string().default('Escape'),
+    // Ctrl+Shift+. (ponto). Usar "." ao invés de "Period" para compatibilidade com accelerator do Electron.
+    pasteSttText: z.string().default('CommandOrControl+Shift+.'), // Colar texto STT em app externo
   }),
   stt: z.object({
     provider: z.enum(['sherpa', 'whisper', 'vosk']).default('whisper'),
@@ -79,6 +81,7 @@ export const defaultConfig: AppConfig = {
     panicMode: 'CommandOrControl+Alt+H', // Botão de pânico
     textHighlight: 'Ctrl+E',
     textHighlightClear: 'Escape',
+    pasteSttText: 'CommandOrControl+Shift+.', // Colar texto STT em app externo
   },
   stt: {
     provider: 'whisper',
