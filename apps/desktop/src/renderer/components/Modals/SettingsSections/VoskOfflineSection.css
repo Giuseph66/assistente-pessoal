@@ -1,0 +1,340 @@
+.vosk-offline-content {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  padding: 10px 0;
+}
+
+.vosk-master-toggle {
+  background: linear-gradient(145deg, rgba(25, 25, 25, 0.6), rgba(15, 15, 15, 0.8));
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 20px;
+  padding: 24px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  cursor: pointer;
+  transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  position: relative;
+  overflow: hidden;
+}
+
+.vosk-master-toggle:hover {
+  border-color: rgba(255, 255, 255, 0.15);
+  transform: translateY(-2px);
+  background: linear-gradient(145deg, rgba(30, 30, 30, 0.7), rgba(20, 20, 20, 0.9));
+}
+
+.vosk-master-toggle.active {
+  border-color: rgba(16, 185, 129, 0.3);
+  box-shadow: 0 0 30px rgba(16, 185, 129, 0.1), inset 0 0 20px rgba(16, 185, 129, 0.05);
+}
+
+.vosk-master-toggle.active::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: radial-gradient(circle at center, rgba(16, 185, 129, 0.1) 0%, transparent 70%);
+  pointer-events: none;
+}
+
+.toggle-main-info {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  flex: 1;
+}
+
+.toggle-icon-circle {
+  width: 56px;
+  height: 56px;
+  border-radius: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.03);
+  color: #666;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  transition: all 0.3s ease;
+}
+
+.active .toggle-icon-circle {
+  background: rgba(16, 185, 129, 0.15);
+  color: #10b981;
+  border-color: rgba(16, 185, 129, 0.3);
+  box-shadow: 0 0 15px rgba(16, 185, 129, 0.2);
+}
+
+.toggle-text h3 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 700;
+  color: #fff;
+  letter-spacing: -0.5px;
+}
+
+.toggle-text p {
+  margin: 4px 0 0;
+  font-size: 13px;
+  color: #888;
+  line-height: 1.4;
+}
+
+.active .toggle-text p {
+  color: #aaa;
+}
+
+.toggle-switch-ui {
+  width: 52px;
+  height: 28px;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 100px;
+  padding: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  transition: all 0.3s ease;
+}
+
+.active .toggle-switch-ui {
+  background: rgba(16, 185, 129, 0.2);
+  border-color: rgba(16, 185, 129, 0.4);
+}
+
+.switch-knob {
+  width: 18px;
+  height: 18px;
+  background: #666;
+  border-radius: 50%;
+  transition: all 0.3s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+}
+
+.switch-knob.on {
+  transform: translateX(24px);
+  background: #10b981;
+  box-shadow: 0 0 10px rgba(16, 185, 129, 0.5);
+}
+
+.disabled-section {
+  opacity: 0.4;
+  pointer-events: none;
+  filter: grayscale(0.5);
+  transition: all 0.3s ease;
+}
+
+.vosk-error-banner {
+  background-color: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  color: #ef4444;
+  padding: 12px 16px;
+  border-radius: 12px;
+  font-size: 13px;
+  margin-bottom: 8px;
+}
+
+.vosk-subsection {
+  background-color: #050505;
+  border: 1px solid #111111;
+  border-radius: 24px;
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.vosk-label {
+  font-size: 14px;
+  font-weight: 700;
+  color: #ffffff;
+  margin-bottom: 4px;
+}
+
+.vosk-subsection h4 {
+  font-size: 16px;
+  font-weight: 700;
+  color: #ffffff;
+  margin-bottom: 8px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.vosk-select-row {
+  width: 100%;
+}
+
+.vosk-filter-row {
+  margin-bottom: 8px;
+}
+
+.vosk-filter-label {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 13px;
+  color: #888888;
+}
+
+.vosk-filter-label span {
+  font-weight: 500;
+}
+
+.vosk-select-small {
+  background-color: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+  padding: 8px 12px;
+  color: #ffffff;
+  font-size: 13px;
+  cursor: pointer;
+  min-width: 120px;
+  transition: all 0.2s ease;
+}
+
+.vosk-select-small:hover {
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+.vosk-advanced-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 20px;
+}
+
+.vosk-advanced-label {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.vosk-advanced-label span {
+  font-size: 11px;
+  font-weight: 700;
+  color: #555;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.vosk-advanced-label input[type="checkbox"] {
+  width: 20px;
+  height: 20px;
+  cursor: pointer;
+  accent-color: #4f46e5;
+}
+
+.vosk-input-number {
+  background-color: rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+  padding: 12px 16px;
+  color: #ffffff;
+  font-size: 14px;
+  font-family: 'JetBrains Mono', monospace;
+  transition: all 0.3s ease;
+}
+
+.vosk-input-number:focus {
+  outline: none;
+  border-color: #4f46e5;
+  background-color: rgba(0, 0, 0, 0.5);
+  box-shadow: 0 0 0 4px rgba(79, 70, 229, 0.1);
+}
+
+.vosk-hint {
+  font-size: 12px;
+  color: #666;
+  font-style: italic;
+  margin-top: 8px;
+}
+
+/* Reutilizar estilos do ModelInstaller */
+.vosk-offline-content .model-installer {
+  margin-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.vosk-offline-content .model-card {
+  padding: 16px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  transition: all 0.3s ease;
+}
+
+.vosk-offline-content .model-card:hover {
+  border-color: rgba(255, 255, 255, 0.15);
+  background: rgba(255, 255, 255, 0.05);
+  transform: translateY(-1px);
+}
+
+.vosk-offline-content .model-info {
+  flex: 1;
+}
+
+.vosk-offline-content .model-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: #ffffff;
+  margin-bottom: 4px;
+}
+
+.vosk-offline-content .model-meta {
+  display: flex;
+  gap: 12px;
+  font-size: 12px;
+  color: #666;
+}
+
+.vosk-offline-content .model-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.vosk-offline-content .model-button {
+  background-color: #111;
+  border: 1px solid #222;
+  color: #ffffff;
+  padding: 10px 20px;
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.vosk-offline-content .model-button:hover {
+  background-color: #1a1a1a;
+  border-color: #4f46e5;
+  box-shadow: 0 0 15px rgba(79, 70, 229, 0.2);
+}
+
+.vosk-offline-content .model-button.active {
+  background-color: rgba(16, 185, 129, 0.1);
+  border-color: rgba(16, 185, 129, 0.3);
+  color: #10b981;
+}
+
+.vosk-offline-content .model-button.secondary {
+  background-color: rgba(239, 68, 68, 0.1);
+  border-color: rgba(239, 68, 68, 0.3);
+  color: #ef4444;
+}
+
+.vosk-offline-content .model-button.secondary:hover {
+  background-color: rgba(239, 68, 68, 0.2);
+  border-color: rgba(239, 68, 68, 0.4);
+}
+
+.vosk-offline-content .model-progress {
+  font-size: 12px;
+  color: #4f46e5;
+  font-weight: 700;
+}

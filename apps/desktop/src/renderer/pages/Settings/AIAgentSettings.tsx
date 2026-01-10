@@ -102,7 +102,8 @@ export function AIAgentSettings(): JSX.Element {
     if (!config) return;
     try {
       setError(null);
-      const updated = await window.ai.saveConfig({ ...config, ...patch });
+      // Envia apenas o patch para evitar reenviar campos antigos (ex.: modelName)
+      const updated = await window.ai.saveConfig(patch);
       setConfig(updated);
       setSuccess('Configuração salva com sucesso');
       setTimeout(() => setSuccess(null), 3000);
@@ -113,9 +114,28 @@ export function AIAgentSettings(): JSX.Element {
 
   const handleProviderChange = async (providerId: AIProviderId) => {
     setSelectedProvider(providerId);
-    await handleConfigChange({ providerId });
-    await loadModels(providerId);
-    await loadKeys(providerId);
+    setError(null);
+    setSuccess(null);
+    try {
+      setLoadingModels(true);
+      const modelsValue = await window.ai.listModels(providerId);
+      const nextModels = modelsValue || [];
+      setModels(nextModels);
+
+      const nextModelId = nextModels[0]?.id;
+      const updated = await window.ai.saveConfig(
+        nextModelId ? { providerId, modelName: nextModelId } : { providerId }
+      );
+      setConfig(updated);
+
+      await loadKeys(providerId);
+      setSuccess('Configuração salva com sucesso');
+      setTimeout(() => setSuccess(null), 3000);
+    } catch (err: any) {
+      setError(err?.message || 'Falha ao salvar configuração');
+    } finally {
+      setLoadingModels(false);
+    }
   };
 
   const handleModelChange = async (modelId: string) => {

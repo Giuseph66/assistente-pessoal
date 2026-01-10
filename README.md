@@ -171,6 +171,14 @@ sudo apt install -y ffmpeg
 - Modelos inválidos: o diretório precisa conter `conf/` e `am/` ou `graph/`.
 - Erro `native callback`/`self-register`: rode `pnpm --filter ricky-desktop rebuild:electron` e verifique `libffi-dev`.
 
+## 🎙️ Transcrição Realtime (OpenAI / Gemini)
+
+### Visão Geral
+- Providers: OpenAI Realtime Transcription (gpt-4o-transcribe) e Gemini Live.
+- Configuração: adicionar chave na aba **API e Modelos** e selecionar o provider em **Modelo de Transcrição Live**.
+- Estudo de caso e métricas: veja `docs/transcricao-realtime.md`.
+- Custos/latência: consultar documentação oficial do Realtime (https://docs.cloud.google.com/vertex-ai/generative-ai/docs/live-api/get-started-websocket).
+
 ## 🌐 Tradução por Overlay (OCR + Tradução local)
 
 ### Visão Geral

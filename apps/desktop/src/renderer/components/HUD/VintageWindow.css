@@ -1,0 +1,32 @@
+.vintage-window-container {
+  position: fixed;
+  z-index: 9999;
+  pointer-events: none;
+  width: 140px;
+  height: 160px;
+  filter: drop-shadow(0 15px 35px rgba(0, 0, 0, 0.6));
+  transition: opacity 0.3s ease, transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+.vintage-window-container.fade-in {
+  opacity: 1;
+  transform: scale(1);
+}
+
+.vintage-window-container.fade-out {
+  opacity: 0;
+  transform: scale(0.9);
+}
+
+/* Estado de drop zone ativa - apenas mantém a escala original */
+.vintage-window-container.drop-zone-active {
+  transform: scale(1);
+  filter: drop-shadow(0 15px 35px rgba(0, 0, 0, 0.6));
+}
+
+/* Ajuste de escala para parecer mais natural ao lado do HUD */
+.vintage-window-container svg {
+  width: 100%;
+  height: 100%;
+}
+

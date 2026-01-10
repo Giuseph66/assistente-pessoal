@@ -1,4 +1,10 @@
-import type { STTConfig, STTFinalEvent, STTPartialEvent, STTStatus } from './types.js';
+import type {
+  LiveTranscriptionProviderId,
+  STTConfig,
+  STTFinalEvent,
+  STTPartialEvent,
+  STTStatus,
+} from './types.js';
 
 export type STTStartEvent = {
   type: 'stt.start';
@@ -27,7 +33,13 @@ export type STTFinalPushEvent = {
 
 export type STTErrorEvent = {
   type: 'stt.error';
-  payload: { message: string; code?: string; ts: number };
+  payload: {
+    message: string;
+    code?: string;
+    debug?: string;
+    providerId?: LiveTranscriptionProviderId;
+    ts: number;
+  };
 };
 
 export type STTEvent =

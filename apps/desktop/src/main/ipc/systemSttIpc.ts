@@ -31,8 +31,8 @@ export function registerSystemSttIpc(controller: SystemSttController): void {
   controller.onStatus((status: STTStatus) => broadcast('systemStt.status', status));
   controller.onPartial((event: STTPartialEvent) => broadcast('systemStt.partial', event));
   controller.onFinal((event: STTFinalEvent) => broadcast('systemStt.final', event));
-  controller.onError((message: string) =>
-    broadcast('systemStt.error', { message, ts: Date.now() })
+  controller.onError((payload) =>
+    broadcast('systemStt.error', { ...payload, ts: Date.now() })
   );
   controller.onDebug((message: string) =>
     broadcast('systemStt.debug', { message, ts: Date.now() })

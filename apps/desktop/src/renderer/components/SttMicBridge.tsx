@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { useSttState } from '../store/sttStore';
 import { setSttMicAnalyser } from '../store/sttMicStore';
+import { getFeaturePermission } from '../utils/featurePermissions';
 
 const DEFAULT_SAMPLE_RATE = 16000;
 
@@ -63,9 +64,17 @@ export function SttMicBridge(): null {
     if (streamRef.current) return;
     try {
       if (!window.stt || typeof window.stt.sendAudio !== 'function') return;
+      if (!getFeaturePermission('microphone')) {
+        // permissão negada dentro do app
+        setSttMicAnalyser(null);
+        return;
+      }
       const config = await window.stt.getConfig().catch(() => null);
+      const providerId = config?.provider;
       const targetRate =
-        config?.sampleRate && Number.isFinite(config.sampleRate) && config.sampleRate > 0
+        providerId === 'openai_realtime_transcribe' || providerId === 'gemini_live'
+          ? DEFAULT_SAMPLE_RATE
+          : config?.sampleRate && Number.isFinite(config.sampleRate) && config.sampleRate > 0
           ? config.sampleRate
           : DEFAULT_SAMPLE_RATE;
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -116,7 +125,7 @@ export function SttMicBridge(): null {
   };
 
   useEffect(() => {
-    const active = status.state === 'running';
+    const active = status.state === 'running' || status.state === 'listening';
     activeRef.current = active;
     if (active) {
       if (startTimerRef.current) {

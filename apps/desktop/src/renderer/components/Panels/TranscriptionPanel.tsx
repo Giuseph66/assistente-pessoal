@@ -1,7 +1,9 @@
 import { useState, useEffect, useRef } from 'react';
+import './TranscriptionPanel.css';
 import { AudioVisualizer } from './AudioVisualizer';
 import { CaptionsPanel } from '../CaptionsPanel';
 import { StatusBadge } from '../StatusBadge';
+import { getFeaturePermission } from '../../utils/featurePermissions';
 import {
   RecordingEntry,
   RecorderStatus,
@@ -55,7 +57,8 @@ export function TranscriptionPanel(): JSX.Element {
   } | null>(null);
   const sttMicAnalyser = useSttMicAnalyser();
   const showDebug =
-    typeof window !== 'undefined' && window.electron?.process?.env?.RICKY_SHOW_STT_DEBUG === '1';
+    typeof window !== 'undefined' &&
+    (window as any).electron?.process?.env?.RICKY_SHOW_STT_DEBUG === '1';
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
@@ -65,6 +68,12 @@ export function TranscriptionPanel(): JSX.Element {
   const audioContextRef = useRef<AudioContext | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
   const sourceNodeRef = useRef<MediaStreamAudioSourceNode | null>(null);
+
+  const ensureMicAllowed = () => {
+    if (!getFeaturePermission('microphone')) {
+      throw new Error('Permissão do microfone está negada no app');
+    }
+  };
 
   const loadSystemSources = async () => {
     if (!window.systemAudio) return;
@@ -268,6 +277,7 @@ export function TranscriptionPanel(): JSX.Element {
     shouldSaveRef.current = true;
 
     try {
+      ensureMicAllowed();
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       mediaStreamRef.current = stream;
 
@@ -376,7 +386,11 @@ export function TranscriptionPanel(): JSX.Element {
 
   const toggleSystemStt = async () => {
     if (!window.systemStt) return;
-    if (systemStatus.state === 'running' || systemStatus.state === 'starting') {
+    if (
+      systemStatus.state === 'running' ||
+      systemStatus.state === 'listening' ||
+      systemStatus.state === 'starting'
+    ) {
       await window.systemStt.stop();
       return;
     }
@@ -441,9 +455,13 @@ export function TranscriptionPanel(): JSX.Element {
     );
   };
 
-  const isSttRunning = sttStatus.state === 'running' || sttStatus.state === 'starting';
+  const isSttRunning =
+    sttStatus.state === 'running' || sttStatus.state === 'listening' || sttStatus.state === 'starting';
   const isSystemRecording = recorderStatus.state === 'recording';
-  const isSystemSttRunning = systemStatus.state === 'running' || systemStatus.state === 'starting';
+  const isSystemSttRunning =
+    systemStatus.state === 'running' ||
+    systemStatus.state === 'listening' ||
+    systemStatus.state === 'starting';
   const systemLevel = isSystemSttRunning
     ? systemSttLevel
     : isSystemRecording
@@ -594,7 +612,10 @@ export function TranscriptionPanel(): JSX.Element {
                   <div className="waveform-label">Gravando audio...</div>
                 </div>
               )}
-              {!isRecording && (sttStatus.state === 'running' || sttStatus.state === 'starting') && (
+              {!isRecording &&
+                (sttStatus.state === 'running' ||
+                  sttStatus.state === 'listening' ||
+                  sttStatus.state === 'starting') && (
                 <div className="waveform-container">
                   <AudioVisualizer analyser={sttMicAnalyser} />
                   <div className="waveform-label">Monitorando microfone (STT)...</div>

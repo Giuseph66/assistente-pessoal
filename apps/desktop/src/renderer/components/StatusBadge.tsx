@@ -6,8 +6,12 @@ const getLabel = (status: STTStatus): string => {
       return 'Idle';
     case 'starting':
       return 'Iniciando';
+    case 'listening':
+      return 'Ouvindo';
     case 'running':
       return 'Rodando';
+    case 'finalizing':
+      return 'Finalizando';
     case 'stopping':
       return 'Parando';
     case 'error':

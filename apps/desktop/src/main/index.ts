@@ -23,11 +23,13 @@ import { registerAIIpc } from './ipc/aiIpc'
 import { registerSystemSttIpc } from './ipc/systemSttIpc'
 import { registerScreenshotIpc } from './ipc/screenshotIpc'
 import { registerTranslationIpc } from './ipc/translationIpc'
+import { registerSessionIpc } from './ipc/sessionIpc'
 import { getModelManager, getSttController } from './stt/sttService'
 import { SystemAudioSourceManager } from './audio/system/SystemAudioSourceManager'
 import { RecorderService } from './audio/recording/RecorderService'
 import { SystemSttController } from './stt/SystemSttController'
 import { ScreenTranslateService } from './services/translation/ScreenTranslateService'
+import { SystemAudioPreviewService } from './audio/system/SystemAudioPreviewService'
 
 function createWindow(): void {
     // Create the browser window.
@@ -101,7 +103,7 @@ app.whenReady().then(async () => {
     // Start engine process (async, não bloqueia)
     const engineManager = getEngineManager();
     engineManager.start().catch((error) => {
-      logger.error({ err: error }, 'Failed to start engine (continuing without STT)');
+        logger.error({ err: error }, 'Failed to start engine (continuing without STT)');
     });
 
     // Default open or close DevTools by F12 in development
@@ -113,12 +115,12 @@ app.whenReady().then(async () => {
 
     // Create overlay window
     const overlayManager = getOverlayManager();
-    
+
     // Register overlay IPC handlers BEFORE creating window to ensure they're available
     // IPC handlers for overlay
     ipcMain.on('overlay:minimize', () => {
         const window = overlayManager.getWindow();
-        if (window) {
+        if (window && !window.isDestroyed()) {
             if (window.isMinimizable()) {
                 window.minimize();
             } else {
@@ -129,7 +131,7 @@ app.whenReady().then(async () => {
 
     ipcMain.on('overlay:close', () => {
         const window = overlayManager.getWindow();
-        if (window) {
+        if (window && !window.isDestroyed()) {
             window.close();
         }
     });
@@ -150,11 +152,11 @@ app.whenReady().then(async () => {
             const overlayManager = getOverlayManager();
             const currentState = overlayManager.getCurrentContentProtection();
             const platformInfo = overlayManager.getPlatformInfo();
-            
+
             // Retorna estado interno se disponível, senão usa config como fallback
             const enabled = currentState !== null ? currentState : true;
-            
-            return { 
+
+            return {
                 enabled,
                 platform: platformInfo.platform,
                 supportsContentProtection: platformInfo.supportsContentProtection,
@@ -162,11 +164,11 @@ app.whenReady().then(async () => {
             };
         } catch (error: any) {
             logger.error({ err: error }, 'Failed to get content protection via IPC');
-            return { 
-                enabled: true, 
-                platform: process.platform, 
-                supportsContentProtection: false, 
-                usingWorkarounds: true 
+            return {
+                enabled: true,
+                platform: process.platform,
+                supportsContentProtection: false,
+                usingWorkarounds: true
             };
         }
     });
@@ -195,7 +197,7 @@ app.whenReady().then(async () => {
         }
     });
 
-    // IPC handler for panic button (apenas altera content protection, mantém janela visível)
+    // IPC handlers for panic button (apenas altera content protection, mantém janela visível)
     ipcMain.on('overlay:panic', (_event, { hide }: { hide: boolean }) => {
         try {
             if (hide) {
@@ -216,120 +218,390 @@ app.whenReady().then(async () => {
         }
     });
 
+    // IPC handler to open external URLs in default browser
+    ipcMain.on('app:open-url', (_event, url: string) => {
+        if (url && (url.startsWith('http://') || url.startsWith('https://'))) {
+            shell.openExternal(url).catch((err) => {
+                logger.error({ err, url }, 'Failed to open external URL');
+            });
+        }
+    });
+
+    // Window Management IPCs
+    ipcMain.on('window:open-settings', () => {
+        overlayManager.createSettingsWindow();
+    });
+
+    ipcMain.on('window:open-history', () => {
+        overlayManager.createHistoryWindow();
+    });
+
+    ipcMain.on('window:open-hud', () => {
+        overlayManager.createHUDWindow();
+    });
+
+    ipcMain.on('window:open-command-bar', () => {
+        overlayManager.createCommandBarWindow();
+    });
+
+    // HUD Dropdown handlers
+    ipcMain.handle('hud-dropdown:show', async (event, { x, y, data }: { x: number; y: number; data?: any }) => {
+        const hudWindow = overlayManager.getHUDWindow();
+        if (hudWindow && !hudWindow.isDestroyed()) {
+            const [winX, winY] = hudWindow.getPosition();
+            // Converte coordenadas locais do clique para coordenadas globais da tela
+            overlayManager.showHUDDropdown(winX + x, winY + y, data);
+        } else {
+            // Fallback para o ponto do cursor se a janela do HUD não for encontrada
+            const { screen } = require('electron');
+            const point = screen.getCursorScreenPoint();
+            overlayManager.showHUDDropdown(point.x, point.y, data);
+        }
+        return { success: true };
+    });
+
+    ipcMain.on('hud-dropdown:hide', () => {
+        overlayManager.hideHUDDropdown();
+    });
+
+    ipcMain.handle('hud-dropdown:isVisible', async () => {
+        return { visible: overlayManager.isHUDDropdownVisible() };
+    });
+
+    ipcMain.on('hud:select-personality', (_event, { personalityId }: { personalityId: number }) => {
+        // Notifica o HUD principal sobre a seleção
+        const hudWindow = overlayManager.getHUDWindow();
+        if (hudWindow && !hudWindow.isDestroyed()) {
+            hudWindow.webContents.send('hud:personality-selected', { personalityId });
+        }
+    });
+
+    // Vintage Window Management
+    ipcMain.on('window:vintage-show', (_event, { x, y }: { x: number; y: number }) => {
+        overlayManager.showVintageWindow(x, y);
+    });
+
+    ipcMain.on('window:vintage-move', (_event, { x, y }: { x: number; y: number }) => {
+        overlayManager.moveVintageWindow(x, y);
+    });
+
+    ipcMain.on('window:vintage-hide', () => {
+        overlayManager.hideVintageWindow();
+    });
+
+    ipcMain.on('window:get-pos', (event) => {
+        event.returnValue = overlayManager.getWindowPosition();
+    });
+
+    ipcMain.on('window:minimize-hud', () => {
+        overlayManager.minimizeHUD();
+    });
+
+    ipcMain.on('window:check-hud-over-vintage', () => {
+        overlayManager.checkHUDOverVintage();
+    });
+
+    ipcMain.on('window:hud-right-click', () => {
+        overlayManager.handleHUDRightClick();
+    });
+
+    ipcMain.on('window:enter-mini-mode', () => {
+        logger.info('Enter mini mode requested from settings');
+        overlayManager.enterMiniMode();
+    });
+
+    ipcMain.on('window:mini-hud-right-click', () => {
+        logger.info('Mini HUD right click received via IPC');
+        overlayManager.exitMiniMode();
+    });
+
+    ipcMain.on('window:mini-hud-quit', () => {
+        logger.info('Mini HUD quit requested');
+        app.quit();
+    });
+
+    ipcMain.on('window:mini-hud-drag', (_event, data: { deltaX: number; deltaY: number }) => {
+        overlayManager.dragMiniHUD(data.deltaX, data.deltaY);
+    });
+
+    ipcMain.on('window:open-session', () => {
+        const window = overlayManager.getWindow();
+        if (window && !window.isDestroyed()) {
+            window.show();
+            window.focus();
+        } else {
+            overlayManager.createWindow();
+        }
+    });
+
+    // Permissions IPC handlers
+    ipcMain.handle('permissions:checkMicrophone', async () => {
+        try {
+            // Tenta acessar o microfone para verificar permissão
+            // No Linux, isso geralmente funciona se o usuário já concedeu permissão antes
+            // ou se o sistema não requer permissão explícita
+            const { systemPreferences } = require('electron');
+            if (systemPreferences && systemPreferences.getMediaAccessStatus) {
+                const status = systemPreferences.getMediaAccessStatus('microphone');
+                return { 
+                    granted: status === 'granted',
+                    status: status || 'unknown'
+                };
+            }
+            // Fallback: assumir que está disponível se não houver API de verificação
+            return { granted: true, status: 'not-checked' };
+        } catch (error: any) {
+            logger.warn({ err: error }, 'Failed to check microphone permission');
+            return { granted: false, status: 'error', error: error?.message };
+        }
+    });
+
+    ipcMain.handle('permissions:requestMicrophone', async () => {
+        try {
+            const { systemPreferences } = require('electron');
+            if (systemPreferences && systemPreferences.askForMediaAccess) {
+                const granted = await systemPreferences.askForMediaAccess('microphone');
+                return { granted, status: granted ? 'granted' : 'denied' };
+            }
+            // Se não houver API de solicitação, retornar como disponível
+            return { granted: true, status: 'not-required' };
+        } catch (error: any) {
+            logger.error({ err: error }, 'Failed to request microphone permission');
+            return { granted: false, status: 'error', error: error?.message };
+        }
+    });
+
+    ipcMain.handle('permissions:openSystemSettings', async () => {
+        try {
+            const platform = process.platform;
+            
+            if (platform === 'linux') {
+                // Tenta abrir configurações de privacidade/permissões no Linux
+                // Diferentes distribuições têm diferentes ferramentas
+                const commands = [
+                    { cmd: 'gnome-control-center', args: ['privacy'] },  // GNOME - abre diretamente privacidade
+                    { cmd: 'gnome-control-center', args: [] },           // GNOME - abre painel geral
+                    { cmd: 'systemsettings', args: [] },                  // KDE Plasma
+                    { cmd: 'kcmshell5', args: ['privacy'] },             // KDE - módulo de privacidade
+                    { cmd: 'xfce4-settings-manager', args: [] },         // XFCE
+                    { cmd: 'gnome-settings', args: [] },                 // GNOME alternativo
+                ];
+                
+                // Tenta executar o primeiro comando disponível
+                const { exec } = require('child_process');
+                const { promisify } = require('util');
+                const execAsync = promisify(exec);
+                
+                for (const { cmd, args } of commands) {
+                    try {
+                        await execAsync(`which ${cmd}`);
+                        const child = spawn(cmd, args, { detached: true, stdio: 'ignore' });
+                        child.unref(); // Permite que o processo pai termine sem esperar
+                        logger.info({ command: cmd, args }, 'Opened system settings');
+                        return { success: true, command: cmd };
+                    } catch {
+                        continue;
+                    }
+                }
+                
+                // Fallback: tenta abrir via xdg-open (padrão Linux)
+                try {
+                    spawn('xdg-open', ['settings://privacy'], { detached: true, stdio: 'ignore' }).unref();
+                    return { success: true, command: 'xdg-open' };
+                } catch {
+                    // Último fallback: abre o gerenciador de arquivos na pasta home
+                    shell.openPath(app.getPath('home'));
+                    return { success: true, command: 'fallback' };
+                }
+            } else if (platform === 'darwin') {
+                // macOS - abre diretamente nas configurações de privacidade do microfone
+                shell.openExternal('x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone');
+                return { success: true };
+            } else if (platform === 'win32') {
+                // Windows - abre diretamente nas configurações de privacidade do microfone
+                shell.openExternal('ms-settings:privacy-microphone');
+                return { success: true };
+            }
+            
+            return { success: false, error: 'Unsupported platform' };
+        } catch (error: any) {
+            logger.error({ err: error }, 'Failed to open system settings');
+            return { success: false, error: error?.message };
+        }
+    });
+
+    ipcMain.on('window:minimize', (event) => {
+        if (event.sender.isDestroyed()) return;
+        const win = BrowserWindow.fromWebContents(event.sender);
+        win?.minimize();
+    });
+
+    ipcMain.on('window:minimize-all', () => {
+        BrowserWindow.getAllWindows().forEach((win) => {
+            if (!win.isDestroyed()) {
+                win.minimize();
+            }
+        });
+    });
+
+    ipcMain.on('window:maximize', (event) => {
+        if (event.sender.isDestroyed()) return;
+        const win = BrowserWindow.fromWebContents(event.sender);
+        if (win?.isMaximized()) {
+            win.unmaximize();
+        } else {
+            win?.maximize();
+        }
+    });
+
+    ipcMain.on('window:close', (event) => {
+        if (event.sender.isDestroyed()) return;
+        const win = BrowserWindow.fromWebContents(event.sender);
+        win?.close();
+    });
+
+    ipcMain.on('app:quit', () => {
+        app.quit();
+    });
+
     registerScreenshotIpc();
-    
-    overlayManager.createWindow();
+
+    // Initial view: only HUD
+    overlayManager.createHUDWindow();
 
     // Initialize STT pipeline + IPC
     const modelManager = getModelManager();
-    const sttController = getSttController();
+    const sttController = getSttController(db);
     registerModelIpc(modelManager);
     registerSttIpc(sttController);
     const systemAudioManager = new SystemAudioSourceManager();
+    const systemAudioPreview = new SystemAudioPreviewService();
     const recorderService = new RecorderService(db);
-    registerSystemAudioIpc(systemAudioManager);
+    registerSystemAudioIpc(systemAudioManager, systemAudioPreview);
     registerRecorderIpc(recorderService);
     registerTranscribeFileIpc(db, modelManager);
-    const systemSttController = new SystemSttController(modelManager);
+    const systemSttController = new SystemSttController(modelManager, db);
     registerSystemSttIpc(systemSttController);
 
     const translationService = new ScreenTranslateService();
     registerTranslationIpc(translationService);
-    
+
     // Initialize AI IPC
     registerAIIpc(db);
-    
+
+    // Initialize Session IPC
+    registerSessionIpc(db);
+
     // Initialize default AI providers in database
     try {
-      db.saveAIProvider({ id: 'gemini', display_name: 'Google Gemini', base_url: 'https://generativelanguage.googleapis.com' });
-      db.saveAIProvider({ id: 'openai', display_name: 'OpenAI', base_url: 'https://api.openai.com' });
-      logger.info('Default AI providers initialized');
+        db.saveAIProvider({ id: 'gemini', display_name: 'Google Gemini', base_url: 'https://generativelanguage.googleapis.com' });
+        db.saveAIProvider({ id: 'openai', display_name: 'OpenAI', base_url: 'https://api.openai.com' });
+        logger.info('Default AI providers initialized');
     } catch (error) {
-      logger.warn({ err: error }, 'Failed to initialize default AI providers (may already exist)');
+        logger.warn({ err: error }, 'Failed to initialize default AI providers (may already exist)');
     }
 
     const runInteractiveCapture = async () => {
-      overlayManager.hide();
-      try {
-        const captureResult = await captureAreaInteractive(db);
-        if (captureResult.success) {
-          const screenshots = db.getScreenshots(1);
-          if (screenshots.length > 0) {
-            gateway.broadcast({
-              type: 'screenshot.captured',
-              payload: { screenshot: screenshots[0] },
-            });
-          }
+        overlayManager.hide();
+        try {
+            const captureResult = await captureAreaInteractive(db);
+            if (captureResult.success) {
+                const screenshots = db.getScreenshots(1);
+                if (screenshots.length > 0) {
+                    gateway.broadcast({
+                        type: 'screenshot.captured',
+                        payload: { screenshot: screenshots[0] },
+                    });
+                }
+            }
+            return captureResult;
+        } catch (error: any) {
+            logger.error({ err: error }, 'Failed to capture screenshot');
+            return {
+                success: false,
+                error: error?.message || 'Unknown error',
+            };
+        } finally {
+            overlayManager.show();
         }
-        return captureResult;
-      } catch (error: any) {
-        logger.error({ err: error }, 'Failed to capture screenshot');
-        return {
-          success: false,
-          error: error?.message || 'Unknown error',
-        };
-      } finally {
-        overlayManager.show();
-      }
     };
 
     const runFullscreenCapture = async () => {
-      // Esconde overlay e janela de tradução (se estiver visível)
-      overlayManager.hide();
-      overlayManager.hideTranslationWindow();
-      // Aguarda um pouco para garantir que animações de minimizar/restaurar/fullscreen terminem
-      // antes de capturar o screenshot (evita que animações apareçam na captura)
-      // 500ms é suficiente para a maioria das animações do sistema
-      await new Promise(resolve => setTimeout(resolve, 500));
-      try {
-        const captureResult = await captureScreenshot({ mode: 'fullscreen' }, db);
-        if (captureResult.success) {
-          const screenshots = db.getScreenshots(1);
-          if (screenshots.length > 0) {
-            gateway.broadcast({
-              type: 'screenshot.captured',
-              payload: { screenshot: screenshots[0] },
-            });
-          }
+        // Esconde overlay e janela de tradução (se estiver visível)
+        overlayManager.hide();
+        overlayManager.hideTranslationWindow();
+        // Aguarda um pouco para garantir que animações de minimizar/restaurar/fullscreen terminem
+        // antes de capturar o screenshot (evita que animações apareçam na captura)
+        // 500ms é suficiente para a maioria das animações do sistema
+        await new Promise(resolve => setTimeout(resolve, 500));
+        try {
+            const captureResult = await captureScreenshot({ mode: 'fullscreen' }, db);
+            if (captureResult.success) {
+                const screenshots = db.getScreenshots(1);
+                if (screenshots.length > 0) {
+                    gateway.broadcast({
+                        type: 'screenshot.captured',
+                        payload: { screenshot: screenshots[0] },
+                    });
+                }
+            }
+            return captureResult;
+        } catch (error: any) {
+            logger.error({ err: error }, 'Failed to capture fullscreen screenshot');
+            return {
+                success: false,
+                error: error?.message || 'Unknown error',
+            };
+        } finally {
+            overlayManager.show();
         }
-        return captureResult;
-      } catch (error: any) {
-        logger.error({ err: error }, 'Failed to capture fullscreen screenshot');
-        return {
-          success: false,
-          error: error?.message || 'Unknown error',
-        };
-      } finally {
-        overlayManager.show();
-      }
     };
 
     // Configure screenshot capture callbacks for gateway
     logger.info('Configuring screenshot callbacks');
     gateway.setScreenshotCallbacks(
-      async () => {
-        logger.debug('Screenshot startCapture callback called');
-        const result = await runInteractiveCapture();
-        if (!result.success && result.error && result.error !== 'Selecao cancelada') {
-          throw new Error(result.error);
+        async () => {
+            logger.debug('Screenshot startCapture callback called');
+            const result = await runInteractiveCapture();
+            if (!result.success && result.error && result.error !== 'Selecao cancelada') {
+                throw new Error(result.error);
+            }
+        },
+        async () => {
+            // Cancel capture: interactive tools handle cancel internally
+            logger.debug('Screenshot cancel requested (interactive)');
+            overlayManager.show();
         }
-      },
-      async () => {
-        // Cancel capture: interactive tools handle cancel internally
-        logger.debug('Screenshot cancel requested (interactive)');
-        overlayManager.show();
-      }
     );
 
     // IPC handler direto para iniciar captura (alternativa ao WebSocket)
     ipcMain.on('screenshot:startCapture', () => {
-      logger.info('IPC screenshot:startCapture received');
-      runInteractiveCapture();
+        logger.info('IPC screenshot:startCapture received');
+        runInteractiveCapture();
     });
 
     ipcMain.handle('screenshot:captureFullscreen', async () => {
-      logger.info('IPC screenshot:captureFullscreen received');
-      return runFullscreenCapture();
+        logger.info('IPC screenshot:captureFullscreen received');
+        const result = await runFullscreenCapture();
+        if (result.success) {
+            const screenshots = db.getScreenshots(1);
+            if (screenshots.length > 0) {
+                return { ...result, screenshotId: screenshots[0].id };
+            }
+        }
+        return result;
+    });
+
+    ipcMain.handle('screenshot:capture-area-interactive', async () => {
+        logger.info('IPC screenshot:capture-area-interactive received');
+        const result = await runInteractiveCapture();
+        if (result.success) {
+            const screenshots = db.getScreenshots(1);
+            if (screenshots.length > 0) {
+                return { ...result, screenshotId: screenshots[0].id };
+            }
+        }
+        return result;
     });
 
     // Register global hotkeys
@@ -447,13 +719,13 @@ app.on('will-quit', async (event) => {
     // Marcar que estamos em processo de shutdown
     // Isso permite filtrar erros esperados de workers durante o encerramento
     setShuttingDown(true);
-    
+
     const hotkeysManager = getHotkeysManager();
     hotkeysManager.unregisterAll();
-    
+
     // Aguardar encerramento dos serviços com timeout para evitar travamento
     const shutdownPromises: Promise<void>[] = [];
-    
+
     const engineManager = getEngineManager();
     shutdownPromises.push(
         Promise.resolve().then(() => {
@@ -461,14 +733,14 @@ app.on('will-quit', async (event) => {
         })
     );
 
-    const sttController = getSttController();
+    const sttController = getSttController(db);
     shutdownPromises.push(
         sttController.stop().catch((error) => {
             // Logar mas não bloquear o shutdown
             logger.warn({ err: error }, 'Error stopping STT controller during shutdown');
         })
     );
-    
+
     try {
         // Aguardar até 5 segundos para o encerramento dos serviços
         await Promise.race([
@@ -484,6 +756,6 @@ app.on('will-quit', async (event) => {
         // Logar mas não bloquear o shutdown
         logger.warn({ err: error }, 'Error during shutdown cleanup');
     }
-    
+
     logger.info('Application quitting');
 })

@@ -11,12 +11,20 @@ import {
   AIProvider,
   AIModel,
   AIApiKey,
-  AISession,
   AIMessage,
   AIRun,
   PromptTemplate,
 } from '@ricky/shared';
 import { Migrator } from './database/migrator';
+
+export interface AISessionRecord {
+  id: number;
+  screenshotId: number | null;
+  providerId: string;
+  modelName: string;
+  summary?: string | null;
+  createdAt: number;
+}
 
 /**
  * Gerenciador de banco de dados SQLite com migrations
@@ -241,13 +249,13 @@ export class DatabaseManager {
   listRecordings(limit: number = 20, sourceType?: string): RecordingEntry[] {
     const rows = sourceType
       ? this.db
-          .prepare(
-            'SELECT * FROM recordings WHERE source_type = ? ORDER BY created_at DESC LIMIT ?'
-          )
-          .all(sourceType, limit)
+        .prepare(
+          'SELECT * FROM recordings WHERE source_type = ? ORDER BY created_at DESC LIMIT ?'
+        )
+        .all(sourceType, limit)
       : this.db
-          .prepare('SELECT * FROM recordings ORDER BY created_at DESC LIMIT ?')
-          .all(limit);
+        .prepare('SELECT * FROM recordings ORDER BY created_at DESC LIMIT ?')
+        .all(limit);
     return rows.map((row: any) => ({
       id: row.id,
       path: row.path,
@@ -345,7 +353,7 @@ export class DatabaseManager {
     const existing = this.db
       .prepare('SELECT id FROM ai_providers WHERE id = ?')
       .get(provider.id);
-    
+
     if (existing) {
       this.db
         .prepare('UPDATE ai_providers SET display_name = ?, base_url = ?, updated_at = ? WHERE id = ?')
@@ -372,7 +380,7 @@ export class DatabaseManager {
     const existing = this.db
       .prepare('SELECT id FROM ai_models WHERE provider_id = ? AND model_name = ?')
       .get(model.provider_id, model.model_name);
-    
+
     if (existing) {
       this.db
         .prepare('UPDATE ai_models SET enabled = ?, metadata_json = ? WHERE provider_id = ? AND model_name = ?')
@@ -510,28 +518,106 @@ export class DatabaseManager {
   /**
    * Cria uma nova sessão de análise
    */
-  saveAISession(session: Omit<AISession, 'id' | 'created_at'>): number {
+  saveAISession(session: Omit<AISessionRecord, 'id' | 'createdAt'>): number {
     const result = this.db
-      .prepare('INSERT INTO ai_sessions (screenshot_id, provider_id, model_name, created_at) VALUES (?, ?, ?, ?)')
-      .run(session.screenshot_id, session.provider_id, session.model_name, Date.now());
+      .prepare('INSERT INTO ai_sessions (screenshot_id, provider_id, model_name, summary, created_at) VALUES (?, ?, ?, ?, ?)')
+      .run(session.screenshotId ?? null, session.providerId, session.modelName, session.summary ?? null, Date.now());
     return result.lastInsertRowid as number;
   }
 
   /**
    * Obtém sessões de um screenshot
    */
-  getAISessions(screenshotId: number): AISession[] {
-    return this.db
+  getAISessions(screenshotId: number): AISessionRecord[] {
+    const rows = this.db
       .prepare('SELECT * FROM ai_sessions WHERE screenshot_id = ? ORDER BY created_at DESC')
-      .all(screenshotId) as AISession[];
+      .all(screenshotId);
+    return (rows as any[]).map((s) => ({
+      id: s.id,
+      screenshotId: s.screenshot_id,
+      providerId: s.provider_id,
+      modelName: s.model_name,
+      summary: s.summary,
+      createdAt: s.created_at,
+    }));
+  }
+
+  /**
+   * Obtém sessões por data (timestamp start/end)
+   */
+  getAISessionsByDate(start: number, end: number, searchQuery?: string): AISessionRecord[] {
+    let rows;
+    if (searchQuery) {
+      const search = `%${searchQuery}%`;
+      rows = this.db
+        .prepare(`
+          SELECT DISTINCT s.* FROM ai_sessions s
+          LEFT JOIN ai_messages m ON m.session_id = s.id
+          WHERE (s.created_at >= ? AND s.created_at <= ?)
+          AND (
+            s.summary LIKE ? OR 
+            s.model_name LIKE ? OR 
+            s.provider_id LIKE ? OR 
+            m.content LIKE ? OR
+            m.recognized_text LIKE ?
+          )
+          ORDER BY s.created_at DESC
+        `)
+        .all(start, end, search, search, search, search, search);
+    } else {
+      rows = this.db
+        .prepare('SELECT * FROM ai_sessions WHERE created_at >= ? AND created_at <= ? ORDER BY created_at DESC')
+        .all(start, end);
+    }
+
+    return (rows as any[]).map((s) => ({
+      id: s.id,
+      screenshotId: s.screenshot_id,
+      providerId: s.provider_id,
+      modelName: s.model_name,
+      summary: s.summary,
+      createdAt: s.created_at,
+    }));
   }
 
   /**
    * Obtém uma sessão por ID
    */
-  getAISessionById(id: number): AISession | null {
+  getAISessionById(id: number): AISessionRecord | null {
     const row = this.db.prepare('SELECT * FROM ai_sessions WHERE id = ?').get(id);
-    return (row as AISession) || null;
+    if (!row) return null;
+    const s = row as any;
+    return {
+      id: s.id,
+      screenshotId: s.screenshot_id,
+      providerId: s.provider_id,
+      modelName: s.model_name,
+      summary: s.summary,
+      createdAt: s.created_at
+    } as AISessionRecord;
+  }
+
+  /**
+   * Atualiza o resumo de uma sessão
+   */
+  updateAISessionSummary(id: number, summary: string): void {
+    this.db.prepare('UPDATE ai_sessions SET summary = ? WHERE id = ?').run(summary, id);
+  }
+
+  /**
+   * Deleta uma sessão e suas mensagens
+   */
+  deleteAISession(id: number): void {
+    const deleteMessages = this.db.prepare('DELETE FROM ai_messages WHERE session_id = ?');
+    const deleteRuns = this.db.prepare('DELETE FROM ai_runs WHERE session_id = ?');
+    const deleteSession = this.db.prepare('DELETE FROM ai_sessions WHERE id = ?');
+
+    // Executa em transação para garantir integridade
+    this.db.transaction(() => {
+      deleteMessages.run(id);
+      deleteRuns.run(id);
+      deleteSession.run(id);
+    })();
   }
 
   // ========== AI Message Methods ==========

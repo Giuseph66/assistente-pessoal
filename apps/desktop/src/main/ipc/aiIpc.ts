@@ -3,6 +3,7 @@ import { DatabaseManager } from '../database';
 import { getAIService, getKeyStorage } from '../ai/AIServiceManager';
 import { getAIProviderManager } from '../ai/AIProviderManager';
 import { ApiKeyPool } from '../ai/ApiKeyPool';
+import { getAIConfigStore } from '../storage/aiConfigStore';
 import {
   AIConfig,
   AIProviderId,
@@ -13,6 +14,7 @@ import {
 import { getLogger } from '@ricky/logger';
 
 const logger = getLogger();
+import { normalizeAIConfigPatch } from '../ai/utils/aiConfigNormalization';
 
 /**
  * Broadcast para todas as janelas
@@ -36,6 +38,26 @@ const broadcast = (channel: string, payload: any) => {
 export function registerAIIpc(db: DatabaseManager): void {
   const keyStorage = getKeyStorage();
   const providerManager = getAIProviderManager();
+  const aiConfigStore = getAIConfigStore();
+  let activePersonalityId: number | null = null;
+
+  const mapPromptTemplate = (t: any) => ({
+    id: t.id,
+    name: t.name,
+    promptText: t.prompt_text,
+    category: t.category,
+    createdAt: t.created_at,
+    updatedAt: t.updated_at,
+  });
+
+  const broadcastPersonalitiesUpdate = () => {
+    const templates = db.getPromptTemplates('personality').map(mapPromptTemplate);
+    broadcast('ai.personalities.updated', {
+      personalities: templates,
+      activePersonalityId,
+    });
+  };
+
   const ensureDefaultTemplates = () => {
     const existing = db.getPromptTemplates();
     if (existing.length > 0) return;
@@ -60,8 +82,30 @@ export function registerAIIpc(db: DatabaseManager): void {
 
   ipcMain.handle('ai.saveConfig', async (_event, config: Partial<AIConfig>) => {
     const aiService = getAIService(db);
-    aiService.updateConfig(config);
-    return aiService.getConfig();
+    const current = aiService.getConfig();
+    const { normalizedPatch, didChangeModel } = normalizeAIConfigPatch(current, config);
+    if (didChangeModel) {
+      logger.warn(
+        {
+          oldProviderId: current.providerId,
+          newProviderId: normalizedPatch.providerId ?? current.providerId,
+          oldModelName: current.modelName,
+          newModelName: normalizedPatch.modelName,
+          patch: config,
+        },
+        'Config patch adjusted to match provider'
+      );
+    }
+    aiService.updateConfig(normalizedPatch);
+    const next = aiService.getConfig();
+
+    // Persistir apenas a seleção essencial para restaurar a última IA (provider + modelo)
+    aiConfigStore.setLastConfig({
+      providerId: next.providerId,
+      modelName: next.modelName,
+    });
+
+    return next;
   });
 
   // ========== Providers ==========
@@ -144,7 +188,7 @@ export function registerAIIpc(db: DatabaseManager): void {
   ipcMain.handle('ai.testKey', async (_event, { keyId, providerId }: { keyId: number; providerId: AIProviderId }) => {
     const keyPool = new ApiKeyPool(db, keyStorage);
     const provider = providerManager.getProvider(providerId);
-    
+
     if (!provider) {
       return { success: false, error: 'Provider not found' };
     }
@@ -165,7 +209,7 @@ export function registerAIIpc(db: DatabaseManager): void {
           );
           return fallback.ok;
         }
-        
+
         // Para OpenAI, testa listando modelos
         if (providerId === 'openai') {
           const response = await fetch('https://api.openai.com/v1/models', {
@@ -191,7 +235,7 @@ export function registerAIIpc(db: DatabaseManager): void {
   ipcMain.handle('ai.analyzeScreenshot', async (_event, request: AnalyzeScreenshotRequest) => {
     const aiService = getAIService(db);
     const config = aiService.getConfig();
-    
+
     // Broadcast início
     broadcast('ai.analysis.started', {
       mode: 'screenshot',
@@ -202,7 +246,7 @@ export function registerAIIpc(db: DatabaseManager): void {
 
     try {
       const result = await aiService.analyzeScreenshot(request);
-      
+
       // Broadcast sucesso
       broadcast('ai.analysis.completed', {
         mode: 'screenshot',
@@ -217,7 +261,7 @@ export function registerAIIpc(db: DatabaseManager): void {
       return result;
     } catch (error: any) {
       logger.error({ err: error }, 'Analysis failed');
-      
+
       // Broadcast erro
       broadcast('ai.analysis.error', {
         mode: 'screenshot',
@@ -241,6 +285,7 @@ export function registerAIIpc(db: DatabaseManager): void {
       startedAt: Date.now(),
       timeoutMs: config.timeoutMs,
       sessionId: request.sessionId,
+      prompt: request.prompt,
     });
 
     try {
@@ -274,7 +319,7 @@ export function registerAIIpc(db: DatabaseManager): void {
 
   ipcMain.handle('ai.extractText', async (_event, screenshotId: number) => {
     const aiService = getAIService(db);
-    
+
     try {
       const text = await aiService.extractText(screenshotId);
       return { success: true, text };
@@ -293,10 +338,10 @@ export function registerAIIpc(db: DatabaseManager): void {
     const sessions = db.getAISessions(screenshotId);
     return sessions.map((s) => ({
       id: s.id,
-      screenshotId: s.screenshot_id,
-      providerId: s.provider_id,
-      modelName: s.model_name,
-      createdAt: s.created_at,
+      screenshotId: s.screenshotId,
+      providerId: s.providerId,
+      modelName: s.modelName,
+      createdAt: s.createdAt,
     }));
   });
 
@@ -320,9 +365,23 @@ export function registerAIIpc(db: DatabaseManager): void {
 
   // ========== Prompt Templates ==========
 
-  ipcMain.handle('ai.savePromptTemplate', async (_event, template: Omit<PromptTemplate, 'id' | 'created_at' | 'updated_at'>) => {
-    const id = db.savePromptTemplate(template);
-    logger.info({ id, name: template.name }, 'Prompt template saved');
+  ipcMain.handle('ai.savePromptTemplate', async (_event, template: any) => {
+    // Converter de camelCase (frontend) para snake_case (database)
+    // O frontend envia { name, promptText, category }
+    // O database espera { name, prompt_text, category }
+    const dbTemplate = {
+      name: template.name,
+      prompt_text: template.promptText || template.prompt_text || '',
+      category: template.category || null,
+    };
+
+    if (!dbTemplate.name || !dbTemplate.prompt_text) {
+      throw new Error('Nome e prompt_text são obrigatórios');
+    }
+
+    const id = db.savePromptTemplate(dbTemplate as any);
+    logger.info({ id, name: dbTemplate.name }, 'Prompt template saved');
+    broadcastPersonalitiesUpdate();
     return { success: true, id };
   });
 
@@ -340,7 +399,21 @@ export function registerAIIpc(db: DatabaseManager): void {
 
   ipcMain.handle('ai.deletePromptTemplate', async (_event, id: number) => {
     db.deletePromptTemplate(id);
+    broadcastPersonalitiesUpdate();
     return { success: true };
+  });
+
+  // ========== Active Personality ==========
+
+  ipcMain.handle('ai.setActivePersonality', async (_event, promptId: number | null) => {
+    activePersonalityId = promptId;
+    logger.info({ promptId }, 'Active personality updated');
+    broadcastPersonalitiesUpdate();
+    return { success: true, promptId };
+  });
+
+  ipcMain.handle('ai.getActivePersonality', async () => {
+    return { promptId: activePersonalityId };
   });
 
   logger.info('AI IPC handlers registered');

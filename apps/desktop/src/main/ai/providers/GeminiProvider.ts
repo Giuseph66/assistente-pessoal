@@ -21,6 +21,9 @@ export class GeminiProvider extends BaseVisionProvider {
         supportsVision: true,
         maxTokens: 8192,
         supportsStreaming: false,
+        metadata: {
+          category: 'Modelos de saida de texto',
+        },
       },
       {
         id: 'gemini-2.5-flash-lite',
@@ -29,6 +32,119 @@ export class GeminiProvider extends BaseVisionProvider {
         supportsVision: true,
         maxTokens: 8192,
         supportsStreaming: false,
+        metadata: {
+          category: 'Modelos de saida de texto',
+        },
+      },
+      {
+        id: 'gemini-2.5-flash-tts',
+        name: 'Gemini 2.5 Flash TTS',
+        provider: 'gemini',
+        supportsVision: true,
+        supportsStreaming: false,
+        metadata: {
+          category: 'Modelos generativos multimodais',
+        },
+      },
+      {
+        id: 'gemini-3-flash',
+        name: 'Gemini 3 Flash',
+        provider: 'gemini',
+        supportsVision: true,
+        supportsStreaming: false,
+        metadata: {
+          category: 'Modelos de saida de texto',
+        },
+      },
+      {
+        id: 'gemini-robotics-er-1.5-preview',
+        name: 'Gemini Robotics ER 1.5 Preview',
+        provider: 'gemini',
+        supportsVision: false,
+        supportsStreaming: false,
+        metadata: {
+          category: 'Outros modelos',
+        },
+      },
+      {
+        id: 'gemma-3-12b',
+        name: 'Gemma 3 12B',
+        provider: 'gemini',
+        supportsVision: false,
+        supportsStreaming: false,
+        metadata: {
+          category: 'Outros modelos',
+        },
+      },
+      {
+        id: 'gemma-3-1b',
+        name: 'Gemma 3 1B',
+        provider: 'gemini',
+        supportsVision: false,
+        supportsStreaming: false,
+        metadata: {
+          category: 'Outros modelos',
+        },
+      },
+      {
+        id: 'gemma-3-27b',
+        name: 'Gemma 3 27B',
+        provider: 'gemini',
+        supportsVision: false,
+        supportsStreaming: false,
+        metadata: {
+          category: 'Outros modelos',
+        },
+      },
+      {
+        id: 'gemma-3-2b',
+        name: 'Gemma 3 2B',
+        provider: 'gemini',
+        supportsVision: false,
+        supportsStreaming: false,
+        metadata: {
+          category: 'Outros modelos',
+        },
+      },
+      {
+        id: 'gemma-3-4b',
+        name: 'Gemma 3 4B',
+        provider: 'gemini',
+        supportsVision: false,
+        supportsStreaming: false,
+        metadata: {
+          category: 'Outros modelos',
+        },
+      },
+      {
+        id: 'gemini-2.5-flash-native-audio-dialog',
+        name: 'Gemini 2.5 Flash Native Audio Dialog',
+        provider: 'gemini',
+        supportsVision: false,
+        supportsStreaming: false,
+        metadata: {
+          category: 'API Live',
+        },
+      },
+      {
+        id: 'gemini-2.5-flash-native-audio-preview-12-2025',
+        name: 'Gemini 2.5 Flash Native Audio Preview 12-2025',
+        provider: 'gemini',
+        supportsVision: false,
+        supportsStreaming: false,
+        metadata: {
+          category: 'API Live (preview)',
+        },
+      },
+      {
+        id: 'gemini-live-2.5-flash-preview',
+        name: 'Gemini Live 2.5 Flash Preview',
+        provider: 'gemini',
+        supportsVision: false,
+        supportsStreaming: false,
+        metadata: {
+          category: 'API Live (preview)',
+        },
       },
     ];
 
@@ -71,38 +187,66 @@ export class GeminiProvider extends BaseVisionProvider {
 
     const systemMessage = req.messages.find((m) => m.role === 'system')?.content;
 
-    const contents: any[] = req.messages
-      .filter((m) => m.role !== 'system')
-      .map((message) => {
-        if (message.role === 'user' && message === lastUser) {
-          return { role: 'user', parts };
-        }
-        // Gemini API aceita apenas "user" ou "model" (não "assistant")
-        let role = message.role;
-        if (role === 'assistant') {
-          role = 'model';
-        }
-        return { role: role as 'user' | 'model', parts: [{ text: message.content }] };
-      });
+    const isSystemInstructionError = (text: string) =>
+      text.includes('systemInstruction') && text.includes('Unknown name');
 
-    const requestBody: any = {
-      contents,
-      generationConfig: {
-        temperature: req.options?.temperature ?? 0.7,
-        maxOutputTokens: req.options?.maxTokens ?? 2048,
-      },
+    const buildContents = (injectSystemAsUser: boolean) => {
+      const contents: any[] = req.messages
+        .filter((m) => m.role !== 'system')
+        .map((message) => {
+          if (message.role === 'user' && message === lastUser) {
+            const partsWithSystem = injectSystemAsUser && systemMessage
+              ? [{ text: systemMessage }, ...parts]
+              : parts;
+            return { role: 'user', parts: partsWithSystem };
+          }
+          let role = message.role;
+          if (role === 'assistant') {
+            role = 'model';
+          }
+          return { role: role as 'user' | 'model', parts: [{ text: message.content }] };
+        });
+
+      if (injectSystemAsUser && systemMessage && contents.length > 0 && contents[0].role === 'user') {
+        if (!contents[0].parts?.some((p: any) => p.text === systemMessage)) {
+          contents[0].parts = [{ text: systemMessage }, ...(contents[0].parts || [])];
+        }
+      }
+
+      return contents;
     };
 
-    if (systemMessage) {
-      requestBody.systemInstruction = {
-        parts: [{ text: systemMessage }],
+    const buildRequestBody = (includeSystemInstruction: boolean, injectSystemAsUser: boolean) => {
+      const requestBody: any = {
+        contents: buildContents(injectSystemAsUser),
+        generationConfig: {
+          temperature: req.options?.temperature ?? 0.7,
+          maxOutputTokens: req.options?.maxTokens ?? 2048,
+        },
       };
-    }
 
-    const requestBodyJson = JSON.stringify(requestBody);
-    const primary = await this.callGenerateContent('v1', modelName, apiKey, requestBodyJson);
+      if (includeSystemInstruction && systemMessage) {
+        requestBody.systemInstruction = {
+          parts: [{ text: systemMessage }],
+        };
+      }
+
+      return requestBody;
+    };
+
+    let requestBody = buildRequestBody(true, false);
+    let requestBodyJson = JSON.stringify(requestBody);
+    let primary = await this.callGenerateContent('v1', modelName, apiKey, requestBodyJson);
     let response = primary.response;
     let responseText = primary.text;
+
+    if (!response.ok && isSystemInstructionError(responseText)) {
+      requestBody = buildRequestBody(false, true);
+      requestBodyJson = JSON.stringify(requestBody);
+      primary = await this.callGenerateContent('v1', modelName, apiKey, requestBodyJson);
+      response = primary.response;
+      responseText = primary.text;
+    }
 
     if (!response.ok && this.shouldRetryOnBeta(response.status, responseText)) {
       const fallback = await this.callGenerateContent('v1beta', modelName, apiKey, requestBodyJson);
@@ -153,38 +297,65 @@ export class GeminiProvider extends BaseVisionProvider {
     const modelName = rawModelName.replace('-vision', '');
 
     const systemMessage = req.messages.find((m) => m.role === 'system')?.content;
-    const contents = req.messages
-      .filter((m) => m.role !== 'system')
-      .map((message) => {
-        // Gemini API aceita apenas "user" ou "model" (não "assistant")
-        let role = message.role;
-        if (role === 'assistant') {
-          role = 'model';
-        }
-        return {
-          role: role as 'user' | 'model',
-          parts: [{ text: message.content }],
-        };
-      });
+    const isSystemInstructionError = (text: string) =>
+      text.includes('systemInstruction') && text.includes('Unknown name');
 
-    const requestBody: any = {
-      contents,
-      generationConfig: {
-        temperature: req.options?.temperature ?? 0.7,
-        maxOutputTokens: req.options?.maxTokens ?? 2048,
-      },
+    const buildContents = (injectSystemAsUser: boolean) => {
+      const contents = req.messages
+        .filter((m) => m.role !== 'system')
+        .map((message) => {
+          let role = message.role;
+          if (role === 'assistant') {
+            role = 'model';
+          }
+          return {
+            role: role as 'user' | 'model',
+            parts: [{ text: message.content }],
+          };
+        });
+
+      if (injectSystemAsUser && systemMessage) {
+        if (contents.length > 0 && contents[0].role === 'user') {
+          contents[0].parts = [{ text: systemMessage }, ...(contents[0].parts || [])];
+        } else {
+          contents.unshift({ role: 'user', parts: [{ text: systemMessage }] });
+        }
+      }
+
+      return contents;
     };
 
-    if (systemMessage) {
-      requestBody.systemInstruction = {
-        parts: [{ text: systemMessage }],
+    const buildRequestBody = (includeSystemInstruction: boolean, injectSystemAsUser: boolean) => {
+      const requestBody: any = {
+        contents: buildContents(injectSystemAsUser),
+        generationConfig: {
+          temperature: req.options?.temperature ?? 0.7,
+          maxOutputTokens: req.options?.maxTokens ?? 2048,
+        },
       };
-    }
 
-    const requestBodyJson = JSON.stringify(requestBody);
-    const primary = await this.callGenerateContent('v1', modelName, apiKey, requestBodyJson);
+      if (includeSystemInstruction && systemMessage) {
+        requestBody.systemInstruction = {
+          parts: [{ text: systemMessage }],
+        };
+      }
+
+      return requestBody;
+    };
+
+    let requestBody = buildRequestBody(true, false);
+    let requestBodyJson = JSON.stringify(requestBody);
+    let primary = await this.callGenerateContent('v1', modelName, apiKey, requestBodyJson);
     let response = primary.response;
     let responseText = primary.text;
+
+    if (!response.ok && isSystemInstructionError(responseText)) {
+      requestBody = buildRequestBody(false, true);
+      requestBodyJson = JSON.stringify(requestBody);
+      primary = await this.callGenerateContent('v1', modelName, apiKey, requestBodyJson);
+      response = primary.response;
+      responseText = primary.text;
+    }
 
     if (!response.ok && this.shouldRetryOnBeta(response.status, responseText)) {
       const fallback = await this.callGenerateContent('v1beta', modelName, apiKey, requestBodyJson);

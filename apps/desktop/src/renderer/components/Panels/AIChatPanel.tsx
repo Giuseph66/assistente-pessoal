@@ -1,136 +1,267 @@
-import { useState, useEffect, useRef } from 'react';
-import { Screenshot } from '@ricky/shared';
+import React, { useState, useEffect, useRef } from 'react';
+import './AIChatPanel.css';
+import {
+  STTStatus,
+  STTPartialEvent,
+  STTFinalEvent,
+  SystemAudioSourceInfo,
+} from '@ricky/shared';
+import { GeminiIcon, OpenAIIcon, OllamaIcon, ProviderIcon } from '../Icons';
+import { useSharedInputValue } from '../../store/sharedInputStore';
 
 interface Message {
-  id: number;
+  id: string;
   role: 'user' | 'assistant';
   content: string;
-  recognizedText?: string;
+  timestamp: number;
+  imagePath?: string;
+  imageBase64?: string;
   screenshotId?: number;
-  screenshotUrl?: string;
-  createdAt: number;
 }
 
-export function AIChatPanel(): JSX.Element {
+interface AIChatPanelProps {
+  sessionId?: number | null;
+}
+
+const defaultStatus: STTStatus = { state: 'idle' };
+
+export const AIChatPanel: React.FC<AIChatPanelProps> = ({ sessionId }) => {
   const [messages, setMessages] = useState<Message[]>([]);
-  const [input, setInput] = useState('');
-  const [isAnalyzing, setIsAnalyzing] = useState(false);
-  const [attachedScreenshot, setAttachedScreenshot] = useState<{ id: number; url: string } | null>(null);
-  const [activeScreenshot, setActiveScreenshot] = useState<{ id: number; url: string } | null>(null);
-  const [showConfig, setShowConfig] = useState(false);
-  const [config, setConfig] = useState<any>(null);
-  const [providers, setProviders] = useState<Array<{ id: string; name: string }>>([]);
-  const [models, setModels] = useState<Array<{ id: string; name: string }>>([]);
-  const [templates, setTemplates] = useState<Array<{ id: number; name: string; promptText: string }>>([]);
-  const [error, setError] = useState<string | null>(null);
-  const [analysisMeta, setAnalysisMeta] = useState<{ startedAt: number; timeoutMs: number } | null>(null);
-  const [elapsedMs, setElapsedMs] = useState(0);
-  const [lastUsage, setLastUsage] = useState<{ tokensIn?: number; tokensOut?: number; model?: string; provider?: string; durationMs?: number } | null>(null);
+  const [inputValue, setInputValue] = useSharedInputValue();
+  const [isTyping, setIsTyping] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const chatSessionIdRef = useRef<number | null>(null);
-  const screenshotSessionIdRef = useRef<number | null>(null);
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const attachedUrlRef = useRef<string | null>(null);
-  const activeUrlRef = useRef<string | null>(null);
-  const analysisMetaRef = useRef<{ startedAt: number; timeoutMs: number } | null>(null);
-  const configRef = useRef<any>(null);
 
-  useEffect(() => {
-    loadConfig();
-    loadProviders();
-    loadTemplates();
-  }, []);
+  // STT States
+  const [systemSttStatus, setSystemSttStatus] = useState<STTStatus>(defaultStatus);
+  const [micSttStatus, setMicSttStatus] = useState<STTStatus>(defaultStatus);
+  const [systemSttPartial, setSystemSttPartial] = useState<string | null>(null);
+  const [micSttPartial, setMicSttPartial] = useState<string | null>(null);
+  const [systemSources, setSystemSources] = useState<SystemAudioSourceInfo[]>([]);
+  const [selectedSourceId, setSelectedSourceId] = useState<string>('');
+  const [sttError, setSttError] = useState<string | null>(null);
+  const [attachedImage, setAttachedImage] = useState<{ path: string; base64: string; screenshotId?: number } | null>(null);
+  const [isCapturing, setIsCapturing] = useState(false);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
 
-  useEffect(() => {
-    if (config?.providerId) {
-      loadModels(config.providerId);
+  // AI Chat States
+  const [activePersonality, setActivePersonality] = useState<any | null>(null);
+  const [currentProviderId, setCurrentProviderId] = useState<string>('gemini');
+  const [isLoading, setIsLoading] = useState(false);
+  const [progress, setProgress] = useState(0);
+  const [currentSessionId, setCurrentSessionId] = useState<number | null>(sessionId || null);
+  const currentSessionIdRef = useRef<number | null>(sessionId || null);
+  const suppressStartedRef = useRef<{ prompt: string; sessionId: number | null } | null>(null);
+  const partialStateRef = useRef({ mic: '', micAt: 0, system: '', systemAt: 0 });
+  const inputResizeRef = useRef<number | null>(null);
+
+  const mapMessages = (rows: any[]): Message[] =>
+    rows
+      .filter((msg) => msg.role === 'user' || msg.role === 'assistant')
+      .map((msg) => ({
+        id: String(msg.id ?? `${msg.role}-${msg.createdAt}`),
+        role: msg.role,
+        content: msg.content || '',
+        timestamp: msg.createdAt || Date.now(),
+      }));
+
+  const loadSessionMessages = async (targetSessionId: number, attempt: number = 0) => {
+    if (!window.ai?.getMessages) return;
+    try {
+      const rows = await window.ai.getMessages(targetSessionId);
+      const mapped = mapMessages(Array.isArray(rows) ? rows : []);
+      setMessages(mapped);
+      if (mapped.length === 0 && attempt < 3) {
+        setTimeout(() => loadSessionMessages(targetSessionId, attempt + 1), 200);
+      }
+    } catch (error) {
+      console.error('Failed to load session messages:', error);
     }
-  }, [config?.providerId]);
+  };
 
-  useEffect(() => {
-    configRef.current = config;
-  }, [config]);
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  };
+
+  const resizeInput = () => {
+    const el = inputRef.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    const maxHeight = 200;
+    const next = Math.min(el.scrollHeight, maxHeight);
+    el.style.height = `${next}px`;
+    el.style.overflowY = el.scrollHeight > maxHeight ? 'auto' : 'hidden';
+  };
 
   useEffect(() => {
     scrollToBottom();
   }, [messages]);
 
   useEffect(() => {
-    attachedUrlRef.current = attachedScreenshot?.url || null;
-  }, [attachedScreenshot]);
-
-  useEffect(() => {
-    activeUrlRef.current = activeScreenshot?.url || null;
-  }, [activeScreenshot]);
-
-  useEffect(() => {
-    analysisMetaRef.current = analysisMeta;
-  }, [analysisMeta]);
-
-  useEffect(() => {
+    if (inputResizeRef.current) {
+      window.cancelAnimationFrame(inputResizeRef.current);
+    }
+    inputResizeRef.current = window.requestAnimationFrame(() => {
+      resizeInput();
+    });
     return () => {
-      if (attachedUrlRef.current) {
-        URL.revokeObjectURL(attachedUrlRef.current);
-      }
-      if (activeUrlRef.current) {
-        URL.revokeObjectURL(activeUrlRef.current);
+      if (inputResizeRef.current) {
+        window.cancelAnimationFrame(inputResizeRef.current);
+        inputResizeRef.current = null;
       }
     };
-  }, []);
+  }, [inputValue, systemSttPartial, micSttPartial]);
 
-  // Foca o textarea quando o painel é montado (apenas uma vez)
+  // Load initial messages or mock data
   useEffect(() => {
-    // Pequeno delay para garantir que o DOM está pronto
-    const timer = setTimeout(() => {
-      if (textareaRef.current) {
-        console.log('Attempting to focus textarea');
-        textareaRef.current.focus();
-      }
-    }, 100);
-    return () => clearTimeout(timer);
-  }, []);
+    currentSessionIdRef.current = currentSessionId;
+  }, [currentSessionId]);
 
   useEffect(() => {
-    const offStarted = window.ai.onAnalysisStarted((event) => {
-      setIsAnalyzing(true);
-      setError(null);
-      setLastUsage(null);
-      setElapsedMs(0);
-      const fallbackTimeout = configRef.current?.timeoutMs || 30000;
-      setAnalysisMeta({
-        startedAt: event.startedAt || Date.now(),
-        timeoutMs: event.timeoutMs || fallbackTimeout,
-      });
+    if (sessionId) {
+      setCurrentSessionId(sessionId);
+      loadSessionMessages(sessionId);
+      return;
+    }
+    setCurrentSessionId(null);
+    setMessages([
+      { id: '1', role: 'assistant', content: 'Olá! Como posso ajudar você hoje?', timestamp: Date.now() }
+    ]);
+  }, [sessionId]);
+
+  // Load configurations (personality and API config)
+  useEffect(() => {
+    loadConfigurations();
+  }, []);
+
+  // Poll for AI config changes to update provider icon in real-time
+  useEffect(() => {
+    const updateProvider = async () => {
+      if (window.ai) {
+        try {
+          const config = await window.ai.getConfig();
+          if (config?.providerId && config.providerId !== currentProviderId) {
+            setCurrentProviderId(config.providerId);
+          }
+        } catch (error) {
+          console.error('Failed to update provider:', error);
+        }
+      }
+    };
+
+    // Update immediately
+    updateProvider();
+
+    // Poll every 2 seconds to catch real-time changes
+    const interval = setInterval(updateProvider, 2000);
+
+    return () => clearInterval(interval);
+  }, [currentProviderId]);
+
+  const loadConfigurations = async () => {
+    try {
+      if (window.ai) {
+        // Load active personality
+        const personalityResult = await window.ai.getActivePersonality();
+        if (personalityResult?.promptId) {
+          const templates = await window.ai.getPromptTemplates('personality');
+          const active = templates.find((t: any) => t.id === personalityResult.promptId);
+          setActivePersonality(active || null);
+        }
+        
+        // Load current AI provider
+        const config = await window.ai.getConfig();
+        if (config?.providerId) {
+          setCurrentProviderId(config.providerId);
+        }
+      }
+    } catch (error) {
+      console.error('Failed to load configurations:', error);
+    }
+  };
+
+  // Helper function to get the correct icon based on provider
+  const getProviderIcon = (providerId: string) => {
+    switch (providerId) {
+      case 'gemini':
+        return <GeminiIcon size={18} />;
+      case 'openai':
+        return (
+          <ProviderIcon size={18} viewBox="0 0 24 24">
+            <defs>
+              <linearGradient id="openai-gradient-white" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stopColor="#ffffff" />
+                <stop offset="100%" stopColor="#ffffff" />
+              </linearGradient>
+            </defs>
+            <path
+              d="M22.2819 9.8211a5.9847 5.9847 0 0 0-.5157-4.9108 6.0462 6.0462 0 0 0-6.5098-2.9A6.0651 6.0651 0 0 0 4.9807 4.1818a5.9847 5.9847 0 0 0-3.9977 2.9 6.0462 6.0462 0 0 0 .7427 7.0966 5.98 5.98 0 0 0 .511 4.9107 6.051 6.051 0 0 0 6.5146 2.9001A5.9847 5.9847 0 0 0 13.2599 24a6.0557 6.0557 0 0 0 5.7718-4.2058 5.9894 5.9894 0 0 0 3.9977-2.9001 6.0557 6.0557 0 0 0-.7475-7.0729zm-9.022 12.6081a4.4755 4.4755 0 0 1-2.8764-1.0408l.1419-.0804 4.7783-2.7582a.7948.7948 0 0 0 .3927-.6813v-6.7369l2.02 1.1686a.071.071 0 0 1 .038.052v5.5826a4.504 4.504 0 0 1-4.4945 4.4944zm-9.6607-4.1254a4.4708 4.4708 0 0 1-.5346-3.0137l.142.0852 4.783 2.7582a.7712.7712 0 0 0 .7806 0l5.8428-3.3685v2.3324a.0804.0804 0 0 1-.0332.0615L9.74 19.9502a4.4992 4.4992 0 0 1-6.1408-1.6464zM2.3408 7.8956a4.485 4.485 0 0 1 2.3655-1.9728V11.6a.7664.7664 0 0 0 .3879.6765l5.8144 3.3543-2.0201 1.1685a.0757.0757 0 0 1-.071 0l-4.8303-2.7865A4.504 4.504 0 0 1 2.3408 7.872zm16.5963 3.8558L13.1038 8.364 15.1192 7.2a.0757.0757 0 0 1 .071 0l4.8303 2.7913a4.4944 4.4944 0 0 1-.6765 8.1042v-5.6772a.79.79 0 0 0-.407-.667zm2.0107-3.0231l-.142-.0852-4.7735-2.7818a.7759.7759 0 0 0-.7854 0L9.409 9.2297V6.8974a.0662.0662 0 0 1 .0284-.0615l4.8303-2.7866a4.4992 4.4992 0 0 1 6.6802 4.66zM8.3065 12.863l-2.02-1.1638a.0804.0804 0 0 1-.038-.0567V6.0742a4.4992 4.4992 0 0 1 7.3757-3.4537l-.142.0805L8.704 5.459a.7948.7948 0 0 0-.3927.6813zm1.0976-2.3654l2.602-1.4998 2.6069 1.4998v2.9994l-2.5974 1.4997-2.6067-1.4997Z"
+              fill="url(#openai-gradient-white)"
+            />
+          </ProviderIcon>
+        );
+      case 'ollama':
+      case 'local':
+        return <OllamaIcon size={18} />;
+      default:
+        return <GeminiIcon size={18} />;
+    }
+  };
+
+  // AI Analysis Event Listeners for Progress
+  useEffect(() => {
+    if (!window.ai) return;
+
+    const offStarted = window.ai.onAnalysisStarted((event: any) => {
+      setIsLoading(true);
+      setProgress(20);
+      if (event?.mode !== 'chat') return;
+
+      const eventSessionId = typeof event.sessionId === 'number' ? event.sessionId : null;
+      if (eventSessionId && !currentSessionIdRef.current) {
+        setCurrentSessionId(eventSessionId);
+      }
+
+      const suppress = suppressStartedRef.current;
+      if (suppress && suppress.prompt === event.prompt && suppress.sessionId === eventSessionId) {
+        suppressStartedRef.current = null;
+        return;
+      }
+
+      if (typeof event.prompt === 'string' && event.prompt.trim()) {
+        const pendingMessage: Message = {
+          id: `pending-${Date.now()}`,
+          role: 'user',
+          content: event.prompt,
+          timestamp: Date.now(),
+        };
+        setMessages((prev) => [...prev, pendingMessage]);
+      }
+
+      setIsTyping(true);
     });
 
-    const offCompleted = window.ai.onAnalysisCompleted((event) => {
-      setIsAnalyzing(false);
-      const meta = analysisMetaRef.current;
-      if (meta?.startedAt) {
-        const durationMs = Date.now() - meta.startedAt;
-        setLastUsage({
-          tokensIn: event.usage?.tokensIn,
-          tokensOut: event.usage?.tokensOut,
-          model: event.model,
-          provider: event.provider,
-          durationMs,
-        });
-      }
-      setAnalysisMeta(null);
-      if (event.mode === 'chat' && event.sessionId) {
-        chatSessionIdRef.current = event.sessionId;
-        loadMessages(event.sessionId);
-      }
-      if (event.mode === 'screenshot' && event.sessionId) {
-        screenshotSessionIdRef.current = event.sessionId;
-        loadMessages(event.sessionId);
+    const offCompleted = window.ai.onAnalysisCompleted((event: any) => {
+      setProgress(100);
+      setTimeout(() => {
+        setIsLoading(false);
+        setProgress(0);
+      }, 300);
+      setIsTyping(false);
+      if (event?.mode === 'chat' && event.sessionId) {
+        if (!currentSessionIdRef.current) {
+          setCurrentSessionId(event.sessionId);
+        }
+        if (!currentSessionIdRef.current || event.sessionId === currentSessionIdRef.current) {
+          loadSessionMessages(event.sessionId);
+        }
       }
     });
 
-    const offError = window.ai.onAnalysisError((event) => {
-      setIsAnalyzing(false);
-      setError(event.error);
-      setAnalysisMeta(null);
+    const offError = window.ai.onAnalysisError((event: any) => {
+      setIsLoading(false);
+      setProgress(0);
+      setIsTyping(false);
+      setSttError(event.error || 'Erro ao processar mensagem');
     });
 
     return () => {
@@ -140,801 +271,721 @@ export function AIChatPanel(): JSX.Element {
     };
   }, []);
 
+  // Load system audio sources
+  const loadSystemSources = async () => {
+    if (!window.systemAudio) return;
+    try {
+      const sources = await window.systemAudio.listSources();
+      const nextSources = Array.isArray(sources) ? sources : [];
+      setSystemSources(nextSources);
+      const defaultSource = nextSources.find((source) => source.isDefaultCandidate)?.id;
+      if (defaultSource && defaultSource !== selectedSourceId) {
+        setSelectedSourceId(defaultSource);
+      } else if (!selectedSourceId && nextSources.length > 0) {
+        setSelectedSourceId(nextSources[0]?.id || '');
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Falha ao listar dispositivos de audio';
+      setSttError(message);
+    }
+  };
+
+  const detectDefaultSource = async (): Promise<string | null> => {
+    if (!window.systemAudio) return null;
+    try {
+      const sourceId = await window.systemAudio.detectDefaultMonitor();
+      if (sourceId) {
+        setSelectedSourceId(sourceId);
+      }
+      return sourceId || null;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Falha ao detectar monitor padrao';
+      setSttError(message);
+    }
+    return null;
+  };
+
+  // Initialize system audio sources
   useEffect(() => {
-    if (!isAnalyzing || !analysisMeta?.startedAt) {
-      return;
-    }
-
-    const interval = setInterval(() => {
-      setElapsedMs(Date.now() - analysisMeta.startedAt);
-    }, 200);
-
-    return () => clearInterval(interval);
-  }, [isAnalyzing, analysisMeta]);
-
-  const loadConfig = async () => {
-    try {
-      const configValue = await window.ai.getConfig();
-      setConfig(configValue);
-    } catch (err) {
-      console.error('Failed to load config:', err);
-    }
-  };
-
-  const loadProviders = async () => {
-    try {
-      const providersValue = await window.ai.listProviders();
-      setProviders(providersValue || []);
-    } catch (err) {
-      console.error('Failed to load providers:', err);
-    }
-  };
-
-  const loadModels = async (providerId: string) => {
-    try {
-      const modelsValue = await window.ai.listModels(providerId);
-      setModels(modelsValue || []);
-    } catch (err) {
-      console.error('Failed to load models:', err);
-    }
-  };
-
-  const loadMessages = async (sessionId: number) => {
-    try {
-      const messagesValue = await window.ai.getMessages(sessionId);
-      const loadedMessages: Message[] = [];
-      
-      for (const msg of messagesValue) {
-        const message: Message = {
-          id: msg.id,
-          role: msg.role as 'user' | 'assistant',
-          content: msg.content,
-          recognizedText: msg.recognizedText,
-          createdAt: msg.createdAt,
-        };
-
-        // Se for mensagem do usuário, verifica se tem screenshot associado
-        if (msg.role === 'user') {
-          // Tenta encontrar screenshot na sessão
-          // Por enquanto, vamos apenas carregar a mensagem
-        }
-
-        loadedMessages.push(message);
-      }
-
-      setMessages(loadedMessages);
-    } catch (err) {
-      console.error('Failed to load messages:', err);
-    }
-  };
-
-  const loadTemplates = async () => {
-    try {
-      const templatesValue = await window.ai.getPromptTemplates();
-      setTemplates(templatesValue || []);
-    } catch (err) {
-      console.error('Failed to load templates:', err);
-    }
-  };
-
-  const handleSend = async () => {
-    if (!input.trim() && !attachedScreenshot && !activeScreenshot) return;
-    if (isAnalyzing) return;
-
-    setError(null);
-
-    const targetScreenshot = attachedScreenshot || activeScreenshot;
-    const promptText = input.trim() || (targetScreenshot ? 'O que você vê nesta imagem?' : '');
-    if (!promptText) {
-      setError('Digite uma mensagem para continuar.');
-      return;
-    }
-
-    const userMessage: Message = {
-      id: Date.now(),
-      role: 'user',
-      content: promptText,
-      screenshotId: targetScreenshot?.id,
-      screenshotUrl: targetScreenshot?.url,
-      createdAt: Date.now(),
-    };
-    setMessages((prev) => [...prev, userMessage]);
-
-    setIsAnalyzing(true);
-    try {
-      if (targetScreenshot) {
-        const result = await window.ai.analyzeScreenshot({
-          screenshotId: targetScreenshot.id,
-          prompt: promptText,
-          sessionId: screenshotSessionIdRef.current || undefined,
-        });
-
-        if (result.success && result.sessionId) {
-          screenshotSessionIdRef.current = result.sessionId;
-          if (attachedScreenshot) {
-            setActiveScreenshot((prev) => {
-              if (prev?.url && prev.url !== attachedScreenshot.url) {
-                URL.revokeObjectURL(prev.url);
-              }
-              return attachedScreenshot;
-            });
-            setAttachedScreenshot(null);
-          }
-          await loadMessages(result.sessionId);
-        } else {
-          setError(result.error || 'Falha na análise');
-        }
-      } else {
-        const result = await window.ai.analyzeText({
-          prompt: promptText,
-          sessionId: chatSessionIdRef.current || undefined,
-        });
-
-        if (result.success && result.sessionId) {
-          chatSessionIdRef.current = result.sessionId;
-          await loadMessages(result.sessionId);
-        } else {
-          setError(result.error || 'Falha na análise');
-        }
-      }
-    } catch (err: any) {
-      setError(err?.message || 'Erro desconhecido');
-    } finally {
-      setIsAnalyzing(false);
-    }
-
-    setInput('');
-  };
-
-  const handleScreenshot = async () => {
-    try {
-      // Inicia captura de screenshot
-      if (window.electron?.ipcRenderer) {
-        window.electron.ipcRenderer.send('screenshot:startCapture');
-        
-        // Aguarda o screenshot ser capturado (via WebSocket ou polling)
-        // Por enquanto, vamos usar um timeout e tentar obter o último screenshot
-        setTimeout(async () => {
-          try {
-            // Tenta obter o último screenshot via IPC (precisa implementar endpoint)
-            // Por enquanto, vamos usar uma abordagem diferente
-            // O screenshot será capturado e podemos ouvir o evento
-          } catch (err) {
-            console.error('Failed to get screenshot:', err);
-          }
-        }, 1000);
-      }
-    } catch (err) {
-      console.error('Failed to capture screenshot:', err);
-    }
-  };
-
-  const handleFullscreenScreenshot = async () => {
-    try {
-      if (window.electron?.ipcRenderer) {
-        await window.electron.ipcRenderer.invoke('screenshot:captureFullscreen');
-      }
-    } catch (err) {
-      console.error('Failed to capture fullscreen screenshot:', err);
-    }
-  };
-
-  const handleConfigSave = async () => {
-    if (!config) return;
-    try {
-      const updated = await window.ai.saveConfig(config);
-      setConfig(updated);
-      setShowConfig(false);
-      setError(null);
-    } catch (err: any) {
-      setError(err?.message || 'Falha ao salvar configuração');
-    }
-  };
-
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  };
-
-  // Listener para screenshots capturados (via WebSocket)
-  useEffect(() => {
-    let ws: WebSocket | null = null;
-    let reconnectTimeout: NodeJS.Timeout;
-
-    const connect = () => {
-      try {
-        ws = new WebSocket('ws://127.0.0.1:8788');
-        
-        ws.onopen = () => {
-          console.log('WebSocket connected for AI Chat');
-        };
-        
-        ws.onmessage = async (event) => {
-          try {
-            const data = JSON.parse(event.data);
-            if (data.type === 'screenshot.captured' && data.payload?.screenshot) {
-              const screenshot: Screenshot = data.payload.screenshot;
-              
-              // Carrega a imagem
-              try {
-                const result = await window.electron?.ipcRenderer.invoke('screenshot:read', {
-                  filePath: screenshot.file_path,
-                });
-
-                if (result?.buffer) {
-                  const blob = new Blob([result.buffer], { type: result.mimeType || 'image/png' });
-                  const url = URL.createObjectURL(blob);
-                  
-                  setAttachedScreenshot((prev) => {
-                    if (prev?.url) {
-                      URL.revokeObjectURL(prev.url);
-                    }
-                    return { id: screenshot.id, url };
-                  });
-                }
-              } catch (err) {
-                console.error('Failed to load screenshot:', err);
-              }
-            }
-          } catch (err) {
-            console.error('Failed to parse WebSocket message:', err);
-          }
-        };
-
-        ws.onerror = (error) => {
-          console.error('WebSocket error:', error);
-        };
-
-        ws.onclose = () => {
-          console.log('WebSocket closed, reconnecting...');
-          reconnectTimeout = setTimeout(connect, 3000);
-        };
-      } catch (err) {
-        console.error('Failed to connect WebSocket:', err);
-        reconnectTimeout = setTimeout(connect, 3000);
-      }
-    };
-
-    connect();
-
-    return () => {
-      if (reconnectTimeout) clearTimeout(reconnectTimeout);
-      if (ws) ws.close();
-    };
+    loadSystemSources();
   }, []);
 
-  return (
-    <div 
-      className="ai-chat-panel" 
-      style={{ 
-        display: 'flex', 
-        flexDirection: 'column', 
-        height: '100%',
-        WebkitAppRegion: 'no-drag',
-        position: 'relative',
-        margin: '-12px', // Remove padding do overlay-content
-        padding: '0',
-      }}
-      onMouseDown={(e) => {
-        // Permite interação dentro do painel
-        e.stopPropagation();
-      }}
-      onClick={(e) => {
-        e.stopPropagation();
-      }}
-    >
-      {/* Header */}
-      <div className="panel-header" style={{ padding: '12px', borderBottom: '1px solid #444', display: 'flex', justifyContent: 'space-between', alignItems: 'center', WebkitAppRegion: 'no-drag' }}>
-        <h3 style={{ margin: 0 }}>My AI</h3>
-        <button
-          onClick={() => setShowConfig(true)}
-          style={{
-            padding: '4px 8px',
-            backgroundColor: 'transparent',
-            border: '1px solid #444',
-            borderRadius: '4px',
-            color: '#e0e0e0',
-            cursor: 'pointer',
-            fontSize: '14px',
-          }}
-          title="Configurações"
-        >
-          ⚙️
-        </button>
-      </div>
+  // Clean STT text - remove UNK tokens and normalize
+  const cleanSttText = (text: string): string => {
+    if (!text) return '';
+    // Remove <UNK>, <unk>, <UNK>, etc. (case insensitive) and surrounding spaces
+    let cleaned = text.replace(/<UNK>/gi, '');
+    cleaned = cleaned.replace(/<noise>/gi, '');
+    cleaned = cleaned.replace(/<silence>/gi, '');
+    // Remove multiple spaces and trim
+    cleaned = cleaned.replace(/\s+/g, ' ').trim();
+    if (/^[\.\,\!\?\:\;]+$/.test(cleaned)) {
+      return '';
+    }
+    return cleaned;
+  };
 
-      {/* Mensagens */}
-      <div
-        style={{
-          flex: 1,
-          overflow: 'auto',
-          padding: '12px',
-          display: 'flex',
-          flexDirection: 'column',
-          gap: '10px',
-          WebkitAppRegion: 'no-drag',
-        }}
-      >
-        {messages.length === 0 ? (
-          <div style={{ textAlign: 'center', color: '#999', marginTop: '40px' }}>
-            <p>Olá! Sou seu assistente de IA.</p>
-            <p style={{ fontSize: '12px', marginTop: '10px' }}>
-              Anexe uma screenshot ou digite uma mensagem para começar.
-            </p>
-          </div>
-        ) : (
-          messages.map((message) => (
-            <div
-              key={message.id}
-              style={{
-                padding: '10px',
-                backgroundColor: message.role === 'user' ? '#1976d2' : '#2d2d2d',
-                borderRadius: '8px',
-                alignSelf: message.role === 'user' ? 'flex-end' : 'flex-start',
-                maxWidth: '80%',
-              }}
-            >
-              {message.screenshotUrl && (
-                <img
-                  src={message.screenshotUrl}
-                  alt="Screenshot"
-                  style={{
-                    width: '100%',
-                    maxWidth: '300px',
-                    borderRadius: '4px',
-                    marginBottom: '8px',
-                  }}
-                />
-              )}
-              <div style={{ whiteSpace: 'pre-wrap' }}>{message.content}</div>
-              {message.recognizedText && message.role === 'assistant' && (
-                <div
-                  style={{
-                    marginTop: '8px',
-                    padding: '6px 8px',
-                    borderRadius: '6px',
-                    backgroundColor: 'rgba(255, 255, 255, 0.08)',
-                    fontSize: '12px',
-                    color: '#d6d6d6',
-                  }}
-                >
-                  <div style={{ fontSize: '11px', color: '#9aa0a6', marginBottom: '4px' }}>
-                    Texto reconhecido
-                  </div>
-                  <div style={{ whiteSpace: 'pre-wrap' }}>{message.recognizedText}</div>
+  const longestCommonPrefixLength = (a: string, b: string): number => {
+    const max = Math.min(a.length, b.length);
+    let i = 0;
+    while (i < max && a[i] === b[i]) i += 1;
+    return i;
+  };
+
+  const getStablePartial = (source: 'mic' | 'system', nextText: string): string => {
+    const state = partialStateRef.current;
+    const prevText = source === 'mic' ? state.mic : state.system;
+    const prevAt = source === 'mic' ? state.micAt : state.systemAt;
+    const now = Date.now();
+
+    if (!nextText) {
+      if (source === 'mic') {
+        state.mic = '';
+        state.micAt = now;
+      } else {
+        state.system = '';
+        state.systemAt = now;
+      }
+      return '';
+    }
+
+    if (!prevText) {
+      if (source === 'mic') {
+        state.mic = nextText;
+        state.micAt = now;
+      } else {
+        state.system = nextText;
+        state.systemAt = now;
+      }
+      return nextText;
+    }
+
+    if (nextText === prevText) {
+      return prevText;
+    }
+
+    if (nextText.startsWith(prevText)) {
+      if (source === 'mic') {
+        state.mic = nextText;
+        state.micAt = now;
+      } else {
+        state.system = nextText;
+        state.systemAt = now;
+      }
+      return nextText;
+    }
+
+    if (prevText.startsWith(nextText)) {
+      return prevText;
+    }
+
+    const prefixLen = longestCommonPrefixLength(prevText, nextText);
+    const prefixRatio = prefixLen / Math.max(prevText.length, nextText.length);
+    if (prefixLen >= 6 && prefixRatio >= 0.6) {
+      const merged = prevText.slice(0, prefixLen) + nextText.slice(prefixLen);
+      if (source === 'mic') {
+        state.mic = merged;
+        state.micAt = now;
+      } else {
+        state.system = merged;
+        state.systemAt = now;
+      }
+      return merged;
+    }
+
+    if (now - prevAt > 900) {
+      if (source === 'mic') {
+        state.mic = nextText;
+        state.micAt = now;
+      } else {
+        state.system = nextText;
+        state.systemAt = now;
+      }
+      return nextText;
+    }
+
+    return prevText;
+  };
+
+  const clearPartialCache = (source: 'mic' | 'system') => {
+    if (source === 'mic') {
+      partialStateRef.current.mic = '';
+      partialStateRef.current.micAt = 0;
+    } else {
+      partialStateRef.current.system = '';
+      partialStateRef.current.systemAt = 0;
+    }
+  };
+
+  const mergeFinalText = (currentText: string, nextText: string): string => {
+    const base = currentText.trim();
+    const next = nextText.trim();
+    if (!base) return next;
+    if (!next) return base;
+
+    const baseLower = base.toLowerCase();
+    const nextLower = next.toLowerCase();
+    const maxOverlap = Math.min(40, Math.min(baseLower.length, nextLower.length));
+    let overlap = 0;
+    for (let i = maxOverlap; i > 0; i -= 1) {
+      if (baseLower.endsWith(nextLower.slice(0, i))) {
+        overlap = i;
+        break;
+      }
+    }
+    const suffix = next.slice(overlap).trimStart();
+    if (!suffix) return base;
+    return `${base}${base.endsWith(' ') ? '' : ' '}${suffix}`;
+  };
+
+  // STT Microphone listeners
+  useEffect(() => {
+    if (!window.stt) return;
+    window.stt.getStatus().then((status) => setMicSttStatus(status || defaultStatus));
+    const offStatus = window.stt.onStatus((status) => {
+      setMicSttStatus(status);
+      if (status.state === 'idle' || status.state === 'error') {
+        clearPartialCache('mic');
+        setMicSttPartial(null);
+      }
+    });
+    const offPartial = window.stt.onPartial((event: STTPartialEvent) => {
+      const cleanedText = cleanSttText(event.text);
+      const stableText = getStablePartial('mic', cleanedText);
+      setMicSttPartial(stableText || null);
+      setSttError(null);
+    });
+    const offFinal = window.stt.onFinal((event: STTFinalEvent) => {
+      const cleanedText = cleanSttText(event.text);
+      if (cleanedText.trim()) {
+        const newText = mergeFinalText(inputValue, cleanedText);
+        setInputValue(newText);
+        setMicSttPartial(null);
+        clearPartialCache('mic');
+        // Focus input and move cursor to end
+        setTimeout(() => {
+          if (inputRef.current) {
+            inputRef.current.focus();
+            inputRef.current.setSelectionRange(newText.length, newText.length);
+          }
+        }, 0);
+      } else {
+        setMicSttPartial(null);
+      }
+      setSttError(null);
+    });
+    const offError = window.stt.onError((payload) => {
+      setSttError(payload.message);
+      setMicSttPartial(null);
+    });
+    return () => {
+      offStatus();
+      offPartial();
+      offFinal();
+      offError();
+    };
+  }, [inputValue]);
+
+  // STT System listeners
+  useEffect(() => {
+    if (!window.systemStt) return;
+    window.systemStt.getStatus().then((status) => setSystemSttStatus(status || defaultStatus));
+    const offStatus = window.systemStt.onStatus((status) => {
+      setSystemSttStatus(status);
+      if (status.state === 'idle') {
+        setSystemSttPartial(null);
+        clearPartialCache('system');
+      }
+      if (status.state === 'error') {
+        setSystemSttPartial(null);
+        clearPartialCache('system');
+      }
+    });
+    const offPartial = window.systemStt.onPartial((event: STTPartialEvent) => {
+      const cleanedText = cleanSttText(event.text);
+      const stableText = getStablePartial('system', cleanedText);
+      setSystemSttPartial(stableText || null);
+      setSttError(null);
+    });
+    const offFinal = window.systemStt.onFinal((event: STTFinalEvent) => {
+      const cleanedText = cleanSttText(event.text);
+      if (cleanedText.trim()) {
+        const newText = mergeFinalText(inputValue, cleanedText);
+        setInputValue(newText);
+        setSystemSttPartial(null);
+        clearPartialCache('system');
+        // Focus input and move cursor to end
+        setTimeout(() => {
+          if (inputRef.current) {
+            inputRef.current.focus();
+            inputRef.current.setSelectionRange(newText.length, newText.length);
+          }
+        }, 0);
+      } else {
+        setSystemSttPartial(null);
+      }
+      setSttError(null);
+    });
+    const offError = window.systemStt.onError((payload) => {
+      setSttError(payload.message);
+      setSystemSttPartial(null);
+    });
+    return () => {
+      offStatus();
+      offPartial();
+      offFinal();
+      offError();
+    };
+  }, [inputValue]);
+
+  // Update cursor position when preview changes
+  useEffect(() => {
+    const hasPreview = !!(systemSttPartial || micSttPartial);
+    if (!inputRef.current || !hasPreview) return;
+    const activePartial = systemSttPartial || micSttPartial;
+    const displayValue = inputValue + (inputValue && !inputValue.endsWith(' ') ? ' ' : '') + (activePartial || '');
+    // Move cursor to end of preview
+    setTimeout(() => {
+      if (inputRef.current) {
+        inputRef.current.setSelectionRange(displayValue.length, displayValue.length);
+      }
+    }, 0);
+  }, [systemSttPartial, micSttPartial, inputValue]);
+
+  // STT Control Functions
+  const toggleSystemStt = async () => {
+    if (!window.systemStt) return;
+    setSttError(null);
+
+    const isRunning =
+      systemSttStatus.state === 'running' ||
+      systemSttStatus.state === 'listening' ||
+      systemSttStatus.state === 'starting';
+    if (isRunning) {
+      await window.systemStt.stop();
+      setSystemSttPartial(null);
+      return;
+    }
+
+    const resolvedSourceId = selectedSourceId || (await detectDefaultSource());
+    if (!resolvedSourceId) {
+      setSttError('Selecione um dispositivo de audio do sistema');
+      return;
+    }
+
+    try {
+      await window.systemStt.start({ sourceId: resolvedSourceId });
+      setSystemSttPartial(null);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Falha ao iniciar STT do sistema';
+      setSttError(message);
+    }
+  };
+
+  const toggleMicStt = async () => {
+    if (!window.stt) return;
+    setSttError(null);
+
+    const isRunning =
+      micSttStatus.state === 'running' ||
+      micSttStatus.state === 'listening' ||
+      micSttStatus.state === 'starting';
+    if (isRunning) {
+      await window.stt.stop();
+      setMicSttPartial(null);
+      return;
+    }
+
+    try {
+      await window.stt.start();
+      setMicSttPartial(null);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Falha ao iniciar STT do microfone';
+      setSttError(message);
+    }
+  };
+
+  const isSystemSttActive =
+    systemSttStatus.state === 'running' ||
+    systemSttStatus.state === 'listening' ||
+    systemSttStatus.state === 'starting';
+  const isMicSttActive =
+    micSttStatus.state === 'running' ||
+    micSttStatus.state === 'listening' ||
+    micSttStatus.state === 'starting';
+
+  // Get display value for input (show preview if available)
+  const getInputDisplayValue = () => {
+    const activePartial = systemSttPartial || micSttPartial;
+    if (activePartial) {
+      // Show committed text + preview
+      return inputValue + (inputValue && !inputValue.endsWith(' ') ? ' ' : '') + activePartial;
+    }
+    return inputValue;
+  };
+
+  const hasPreview = !!(systemSttPartial || micSttPartial);
+
+  // Minimize all windows
+  const minimizeAllWindows = async () => {
+    if (window.electron?.ipcRenderer) {
+      window.electron.ipcRenderer.send('window:minimize-all');
+    }
+  };
+
+  // Convert image to base64
+  const imageToBase64 = async (filePath: string): Promise<string> => {
+    try {
+      if (window.electron?.ipcRenderer) {
+        const result = await window.electron.ipcRenderer.invoke('screenshot:read', { filePath });
+        if (result.base64) {
+          const mimeType = result.mimeType || 'image/png';
+          return `data:${mimeType};base64,${result.base64}`;
+        }
+      }
+      throw new Error('Failed to read image');
+    } catch (error) {
+      console.error('Error converting image to base64:', error);
+      throw error;
+    }
+  };
+
+  // Handle area screenshot (Imagem button)
+  const handleAreaScreenshot = async () => {
+    setIsCapturing(true);
+    try {
+      // Minimize all windows
+      await minimizeAllWindows();
+
+      // Wait a bit for windows to minimize
+      await new Promise(resolve => setTimeout(resolve, 300));
+
+      // Capture area interactively
+      if (window.electron?.ipcRenderer) {
+        const result = await window.electron.ipcRenderer.invoke('screenshot:capture-area-interactive');
+
+        if (result.success && result.path) {
+          const base64 = await imageToBase64(result.path);
+          setAttachedImage({
+            path: result.path,
+            base64,
+            screenshotId: result.screenshotId
+          });
+        } else if (result.error && result.error !== 'Selecao cancelada') {
+          setSttError(result.error || 'Falha ao capturar screenshot');
+        }
+      }
+    } catch (error: any) {
+      setSttError(error.message || 'Falha ao capturar screenshot');
+    } finally {
+      setIsCapturing(false);
+    }
+  };
+
+  // Handle fullscreen screenshot (Captura button)
+  const handleFullscreenScreenshot = async () => {
+    setIsCapturing(true);
+    try {
+      // Minimize all windows
+      await minimizeAllWindows();
+
+      // Wait a bit for windows to minimize
+      await new Promise(resolve => setTimeout(resolve, 500));
+
+      // Capture fullscreen
+      if (window.electron?.ipcRenderer) {
+        const result = await window.electron.ipcRenderer.invoke('screenshot:captureFullscreen');
+
+        if (result.success && result.path) {
+          const base64 = await imageToBase64(result.path);
+          setAttachedImage({
+            path: result.path,
+            base64,
+            screenshotId: result.screenshotId
+          });
+        } else {
+          setSttError(result.error || 'Falha ao capturar screenshot');
+        }
+      }
+    } catch (error: any) {
+      setSttError(error.message || 'Falha ao capturar screenshot');
+    } finally {
+      setIsCapturing(false);
+    }
+  };
+
+  const compressImage = async (base64DataUrl: string): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      try {
+        const img = new Image();
+        img.onload = () => {
+          // Create canvas
+          const canvas = document.createElement('canvas');
+          const ctx = canvas.getContext('2d');
+          if (!ctx) {
+            reject(new Error('Failed to get canvas context'));
+            return;
+          }
+
+          // Calculate new dimensions (max 1280px)
+          const maxDimension = 1280;
+          let width = img.width;
+          let height = img.height;
+
+          if (width > maxDimension || height > maxDimension) {
+            if (width > height) {
+              height = (height / width) * maxDimension;
+              width = maxDimension;
+            } else {
+              width = (width / height) * maxDimension;
+              height = maxDimension;
+            }
+          }
+
+          canvas.width = width;
+          canvas.height = height;
+
+          // Draw and compress
+          ctx.drawImage(img, 0, 0, width, height);
+          const compressed = canvas.toDataURL('image/jpeg', 0.8);
+          resolve(compressed);
+        };
+
+        img.onerror = () => reject(new Error('Failed to load image'));
+        img.src = base64DataUrl;
+      } catch (error) {
+        reject(error);
+      }
+    });
+  };
+
+  const handleSendMessage = async () => {
+    // Clear any preview before sending
+    const textToSend = inputValue.trim();
+    if (!textToSend && !attachedImage) return;
+
+    // Clear previews
+    setSystemSttPartial(null);
+    setMicSttPartial(null);
+
+    const newMessage: Message = {
+      id: Date.now().toString(),
+      role: 'user',
+      content: textToSend || '',
+      timestamp: Date.now(),
+      ...(attachedImage && {
+        imagePath: attachedImage.path,
+        imageBase64: attachedImage.base64,
+        screenshotId: attachedImage.screenshotId
+      })
+    };
+
+    setMessages(prev => [...prev, newMessage]);
+    setInputValue('');
+    const imageToSend = attachedImage;
+    setAttachedImage(null);
+    setIsTyping(true);
+    setProgress(10);
+
+    try {
+      // Get personality context
+      const context = activePersonality?.promptText || undefined;
+
+      let result;
+      if (imageToSend && imageToSend.screenshotId) {
+        // Chat with screenshot
+        setProgress(30);
+
+        result = await window.ai.analyzeScreenshot({
+          screenshotId: imageToSend.screenshotId,
+          prompt: textToSend || 'Analise esta imagem',
+          sessionId: currentSessionId || undefined,
+          context
+        });
+      } else {
+        // Text-only chat
+        setProgress(30);
+
+        suppressStartedRef.current = { prompt: textToSend, sessionId: currentSessionId || null };
+        result = await window.ai.analyzeText({
+          prompt: textToSend,
+          sessionId: currentSessionId || undefined,
+          context
+        });
+      }
+
+      if (result.success && result.response) {
+        // Update session ID if new
+        if (result.sessionId && !currentSessionId) {
+          setCurrentSessionId(result.sessionId);
+        }
+
+        const responseText = result.response.answerText || 'Processado com sucesso.';
+        const aiResponse: Message = {
+          id: (Date.now() + 1).toString(),
+          role: 'assistant',
+          content: responseText,
+          timestamp: Date.now()
+        };
+        setMessages(prev => [...prev, aiResponse]);
+      } else {
+        throw new Error(result.error || 'Falha ao processar mensagem');
+      }
+    } catch (error: any) {
+      console.error('Error sending message:', error);
+      const errorResponse: Message = {
+        id: (Date.now() + 1).toString(),
+        role: 'assistant',
+        content: `❌ Erro: ${error.message || 'Erro desconhecido ao processar mensagem'}`,
+        timestamp: Date.now()
+      };
+      setMessages(prev => [...prev, errorResponse]);
+      setSttError(error.message || 'Erro ao enviar mensagem');
+    } finally {
+      setIsTyping(false);
+      setProgress(100);
+      setTimeout(() => setProgress(0), 300);
+      suppressStartedRef.current = null;
+    }
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      handleSendMessage();
+    }
+  };
+
+  return (
+    <div className="ai-chat-panel">
+      <div className="messages-container">
+        {messages.map((msg) => (
+          <div key={msg.id} className={`message-row ${msg.role}`}>
+            <div className="message-bubble">
+              {msg.role === 'assistant' && (
+                <div className="avatar">
+                  {getProviderIcon(currentProviderId)}
                 </div>
               )}
+              <div className="message-content">
+                {msg.imageBase64 && (
+                  <div className="message-image">
+                    <img src={msg.imageBase64} alt="Screenshot" />
+                  </div>
+                )}
+                {msg.content && <div>{msg.content}</div>}
+              </div>
             </div>
-          ))
-        )}
-        {isAnalyzing && (
-          <div
-            style={{
-              padding: '10px',
-              backgroundColor: '#2d2d2d',
-              borderRadius: '8px',
-              alignSelf: 'flex-start',
-            }}
-          >
-            <div style={{ fontSize: '12px', color: '#999', marginBottom: '5px' }}>Assistente</div>
-            <div>Pensando...</div>
+          </div>
+        ))}
+        {isTyping && (
+          <div className="message-row assistant">
+            <div className="message-bubble typing">
+              <div className="avatar">
+                {getProviderIcon(currentProviderId)}
+              </div>
+              <div className="typing-dots">
+                <span>.</span><span>.</span><span>.</span>
+              </div>
+            </div>
           </div>
         )}
         <div ref={messagesEndRef} />
       </div>
 
-      {/* Erro */}
-      {error && (
-        <div
-          style={{
-            padding: '10px',
-            backgroundColor: '#d32f2f',
-            color: '#fff',
-            margin: '0 10px',
-            borderRadius: '4px',
-            fontSize: '12px',
-          }}
-        >
-          {error}
-        </div>
-      )}
-
-      {(isAnalyzing || lastUsage) && (
-        <div
-          style={{
-            padding: '8px 12px',
-            borderTop: '1px solid #444',
-            borderBottom: '1px solid #444',
-            backgroundColor: '#1a1a1a',
-            fontSize: '12px',
-            color: '#cfcfcf',
-          }}
-        >
-          <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', marginBottom: '6px' }}>
-            {isAnalyzing && analysisMeta && (
-              <span>
-                Tempo: {(elapsedMs / 1000).toFixed(1)}s / {(analysisMeta.timeoutMs / 1000).toFixed(0)}s
-              </span>
-            )}
-            {lastUsage && (
-              <>
-                <span>Tokens: {lastUsage.tokensIn ?? '-'} / {lastUsage.tokensOut ?? '-'}</span>
-                {lastUsage.model && <span>Modelo: {lastUsage.model}</span>}
-                {lastUsage.provider && <span>Provider: {lastUsage.provider}</span>}
-                {lastUsage.durationMs && <span>Duração: {(lastUsage.durationMs / 1000).toFixed(1)}s</span>}
-              </>
-            )}
-          </div>
-          {isAnalyzing && analysisMeta && (
-            <div style={{ height: '6px', backgroundColor: '#2d2d2d', borderRadius: '999px', overflow: 'hidden' }}>
-              <div
-                style={{
-                  height: '100%',
-                  width: `${Math.min(96, Math.max(4, (elapsedMs / analysisMeta.timeoutMs) * 100))}%`,
-                  backgroundColor: '#1976d2',
-                  transition: 'width 0.2s ease',
-                }}
-              />
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Screenshot anexado */}
-      {(attachedScreenshot || activeScreenshot) && (
-        <div
-          style={{
-            padding: '10px',
-            borderTop: '1px solid #444',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '10px',
-          }}
-        >
-          <img
-            src={(attachedScreenshot || activeScreenshot)?.url}
-            alt="Screenshot anexado"
-            style={{
-              width: '60px',
-              height: '60px',
-              objectFit: 'cover',
-              borderRadius: '4px',
-            }}
-          />
-          <div style={{ flex: 1, fontSize: '12px', color: '#999' }}>
-            {attachedScreenshot ? 'Screenshot anexado' : 'Screenshot ativo'}
-          </div>
-          <button
-            onClick={() => {
-              if (attachedScreenshot?.url) {
-                URL.revokeObjectURL(attachedScreenshot.url);
-              }
-              if (activeScreenshot?.url) {
-                URL.revokeObjectURL(activeScreenshot.url);
-              }
-              setAttachedScreenshot(null);
-              setActiveScreenshot(null);
-              screenshotSessionIdRef.current = null;
-            }}
-            style={{
-              padding: '4px 8px',
-              backgroundColor: '#d32f2f',
-              color: '#fff',
-              border: 'none',
-              borderRadius: '4px',
-              cursor: 'pointer',
-              fontSize: '12px',
-            }}
-          >
-            Remover
-          </button>
-        </div>
-      )}
-
-      {/* Input */}
-      <div 
-        style={{ 
-          padding: '12px', 
-          borderTop: '1px solid #444',
-          WebkitAppRegion: 'no-drag',
-          position: 'relative',
-          zIndex: 100,
-        }}
-        onMouseDown={(e) => e.stopPropagation()}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div style={{ display: 'flex', gap: '5px', marginBottom: '5px' }}>
-          <button
-            onClick={handleScreenshot}
-            style={{
-              padding: '8px 12px',
-              backgroundColor: '#2e7d32',
-              color: '#fff',
-              border: 'none',
-              borderRadius: '4px',
-              cursor: 'pointer',
-              fontSize: '12px',
-            }}
-            title="Anexar Screenshot"
-            type="button"
-          >
-            📷 Screenshot
-          </button>
-          <button
-            onClick={handleFullscreenScreenshot}
-            style={{
-              padding: '8px 12px',
-              backgroundColor: '#455a64',
-              color: '#fff',
-              border: 'none',
-              borderRadius: '4px',
-              cursor: 'pointer',
-              fontSize: '12px',
-            }}
-            title="Capturar tela inteira"
-            type="button"
-          >
-            🖥️ Tela inteira
-          </button>
-          {templates.length > 0 && (
-            <div style={{ display: 'flex', gap: '5px', flexWrap: 'wrap' }}>
-              {templates.slice(0, 4).map((template) => (
-                <button
-                  key={template.id}
-                  type="button"
-                  onClick={() => setInput(template.promptText)}
-                  style={{
-                    padding: '6px 8px',
-                    backgroundColor: '#2d2d2d',
-                    color: '#fff',
-                    border: '1px solid #444',
-                    borderRadius: '4px',
-                    cursor: 'pointer',
-                    fontSize: '11px',
-                  }}
-                  title={template.name}
-                >
-                  {template.name}
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
-        <div style={{ display: 'flex', gap: '5px', WebkitAppRegion: 'no-drag' }}>
+      <div className="input-area-wrapper">
+        <div className="input-island">
           <textarea
-            ref={textareaRef}
-            value={input}
+            ref={inputRef}
+            value={getInputDisplayValue()}
             onChange={(e) => {
               const newValue = e.target.value;
-              console.log('onChange triggered, new value:', newValue);
-              setInput(newValue);
-            }}
-            onFocus={(e) => {
-              console.log('Textarea focused');
-              e.stopPropagation();
-            }}
-            onBlur={(e) => {
-              console.log('Textarea blurred');
-              e.stopPropagation();
-            }}
-            onClick={(e) => {
-              console.log('Textarea clicked');
-              e.stopPropagation();
-              e.currentTarget.focus();
-            }}
-            onMouseDown={(e) => {
-              console.log('Textarea mouseDown');
-              e.stopPropagation();
-            }}
-            onKeyDown={(e) => {
-              console.log('KeyDown pressed:', e.key, 'value:', e.currentTarget.value);
-              e.stopPropagation();
-              if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault();
-                handleSend();
+              const activePartial = systemSttPartial || micSttPartial;
+
+              if (activePartial) {
+                // User is editing - clear preview and commit their changes
+                setSystemSttPartial(null);
+                setMicSttPartial(null);
+                setInputValue(newValue);
+              } else {
+                // No preview, normal editing
+                setInputValue(newValue);
               }
             }}
-            onKeyUp={(e) => {
-              console.log('KeyUp pressed:', e.key);
-              e.stopPropagation();
-            }}
-            onInput={(e) => {
-              console.log('onInput triggered');
-              const target = e.target as HTMLTextAreaElement;
-              setInput(target.value);
-            }}
+            onKeyDown={handleKeyDown}
             placeholder="Digite sua mensagem..."
-            disabled={isAnalyzing}
-            autoFocus={false}
-            spellCheck={true}
-            style={{
-              flex: 1,
-              minHeight: '60px',
-              padding: '8px',
-              borderRadius: '4px',
-              border: '1px solid #444',
-              backgroundColor: '#1e1e1e',
-              color: '#e0e0e0',
-              fontSize: '14px',
-              fontFamily: 'inherit',
-              resize: 'vertical',
-              outline: 'none',
-              WebkitAppRegion: 'no-drag',
-              cursor: 'text',
-              pointerEvents: 'auto',
-              boxSizing: 'border-box',
-            }}
+            rows={1}
+            className={`chat-input ${hasPreview ? 'has-preview' : ''}`}
           />
           <button
-            onClick={handleSend}
-            disabled={(!input.trim() && !attachedScreenshot && !activeScreenshot) || isAnalyzing}
-            style={{
-              padding: '8px 16px',
-              backgroundColor: '#1976d2',
-              color: '#fff',
-              border: 'none',
-              borderRadius: '4px',
-              cursor: (!input.trim() && !attachedScreenshot && !activeScreenshot) || isAnalyzing ? 'not-allowed' : 'pointer',
-            opacity: (!input.trim() && !attachedScreenshot && !activeScreenshot) || isAnalyzing ? 0.5 : 1,
-            alignSelf: 'flex-end',
-          }}
+            className="send-btn"
+            onClick={handleSendMessage}
+            disabled={!inputValue.trim()}
           >
-            Enviar
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M22 2L11 13" />
+              <path d="M22 2L15 22L11 13L2 9L22 2Z" />
+            </svg>
           </button>
         </div>
+        <div className="input-actions">
+          <button
+            className={`action-pill ${isCapturing ? 'capturing' : ''}`}
+            onClick={handleAreaScreenshot}
+            disabled={isCapturing}
+            title="Capturar área da tela"
+          >
+            {isCapturing ? '⏳ Capturando...' : '📷 Imagem'}
+          </button>
+          <button
+            className={`action-pill ${isCapturing ? 'capturing' : ''}`}
+            onClick={handleFullscreenScreenshot}
+            disabled={isCapturing}
+            title="Capturar tela inteira"
+          >
+            {isCapturing ? '⏳ Capturando...' : '🖥️ Capturar'}
+          </button>
+          <button
+            className={`action-pill stt-button ${isSystemSttActive ? 'active' : ''}`}
+            onClick={toggleSystemStt}
+            title={isSystemSttActive ? 'Parar STT do Sistema' : 'Iniciar STT do Sistema'}
+          >
+            {isSystemSttActive ? '⏹️ Parar STT Sistema' : '🎤 STT Sistema'}
+          </button>
+          <button
+            className={`action-pill stt-button ${isMicSttActive ? 'active' : ''}`}
+            onClick={toggleMicStt}
+            title={isMicSttActive ? 'Parar STT do Microfone' : 'Iniciar STT do Microfone'}
+          >
+            {isMicSttActive ? '⏹️ Parar STT Mic' : '🎙️ STT Microfone'}
+          </button>
+        </div>
+        {attachedImage && (
+          <div className="attached-image-preview">
+            <img src={attachedImage.base64} alt="Screenshot anexado" />
+            <button
+              className="remove-image-btn"
+              onClick={() => setAttachedImage(null)}
+              title="Remover imagem"
+            >
+              ✕
+            </button>
+          </div>
+        )}
+        {sttError && (
+          <div className="stt-error-message">{sttError}</div>
+        )}
       </div>
 
-      {/* Modal de Configurações */}
-      {showConfig && (
-        <div
-          style={{
-            position: 'fixed',
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            backgroundColor: 'rgba(0, 0, 0, 0.8)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            zIndex: 1000,
-          }}
-          onClick={() => setShowConfig(false)}
-        >
+      {/* Progress Bar */}
+      {isLoading && (
+        <div className="progress-bar-container">
           <div
-            style={{
-              backgroundColor: '#1e1e1e',
-              padding: '20px',
-              borderRadius: '8px',
-              maxWidth: '500px',
-              width: '90%',
-              border: '1px solid #444',
-            }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <h3 style={{ marginTop: 0 }}>Configurações do Chat</h3>
-            
-            {config && (
-              <>
-                <div style={{ marginBottom: '15px' }}>
-                  <label style={{ display: 'block', marginBottom: '5px' }}>Provedor</label>
-                  <select
-                    value={config.providerId}
-                    onChange={async (e) => {
-                      const newProviderId = e.target.value;
-                      setConfig({ ...config, providerId: newProviderId });
-                      await loadModels(newProviderId);
-                      // Reseta o modelo para o primeiro disponível do novo provider
-                      const newModels = await window.ai.listModels(newProviderId);
-                      if (newModels.length > 0) {
-                        setConfig({ ...config, providerId: newProviderId, modelName: newModels[0].id });
-                      }
-                    }}
-                    style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #444', backgroundColor: '#2d2d2d', color: '#e0e0e0' }}
-                  >
-                    {providers.map((p) => (
-                      <option key={p.id} value={p.id}>
-                        {p.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div style={{ marginBottom: '15px' }}>
-                  <label style={{ display: 'block', marginBottom: '5px' }}>Modelo</label>
-                  <select
-                    value={config.modelName}
-                    onChange={(e) => setConfig({ ...config, modelName: e.target.value })}
-                    style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #444', backgroundColor: '#2d2d2d', color: '#e0e0e0' }}
-                  >
-                    {models.map((m) => (
-                      <option key={m.id} value={m.id}>
-                        {m.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div style={{ marginBottom: '15px' }}>
-                  <label style={{ display: 'block', marginBottom: '5px' }}>Otimização de imagem</label>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: '#e0e0e0' }}>
-                    <input
-                      type="checkbox"
-                      checked={Boolean(config.enableImageOptimization)}
-                      onChange={(e) => setConfig({ ...config, enableImageOptimization: e.target.checked })}
-                    />
-                    Ativar otimização automática
-                  </label>
-                  <div style={{ display: 'flex', gap: '8px', marginTop: '8px', flexWrap: 'wrap' }}>
-                    <div style={{ flex: 1, minWidth: '140px' }}>
-                      <label style={{ display: 'block', marginBottom: '4px', fontSize: '12px' }}>Largura máx (px)</label>
-                      <input
-                        type="number"
-                        value={config.maxImageDimension ?? 1280}
-                        onChange={(e) => setConfig({ ...config, maxImageDimension: Number(e.target.value) || 0 })}
-                        style={{ width: '100%', padding: '6px 8px', borderRadius: '4px', border: '1px solid #444', backgroundColor: '#2d2d2d', color: '#e0e0e0' }}
-                      />
-                    </div>
-                    <div style={{ flex: 1, minWidth: '140px' }}>
-                      <label style={{ display: 'block', marginBottom: '4px', fontSize: '12px' }}>Tamanho máx (MB)</label>
-                      <input
-                        type="number"
-                        value={((config.maxImageBytes ?? 2500000) / 1_000_000).toFixed(1)}
-                        onChange={(e) =>
-                          setConfig({
-                            ...config,
-                            maxImageBytes: Math.max(0, Math.round(Number(e.target.value) * 1_000_000)),
-                          })
-                        }
-                        style={{ width: '100%', padding: '6px 8px', borderRadius: '4px', border: '1px solid #444', backgroundColor: '#2d2d2d', color: '#e0e0e0' }}
-                      />
-                    </div>
-                    <div style={{ flex: 1, minWidth: '140px' }}>
-                      <label style={{ display: 'block', marginBottom: '4px', fontSize: '12px' }}>Qualidade (0-100)</label>
-                      <input
-                        type="number"
-                        value={config.imageQuality ?? 80}
-                        onChange={(e) =>
-                          setConfig({ ...config, imageQuality: Number(e.target.value) || 80 })
-                        }
-                        style={{ width: '100%', padding: '6px 8px', borderRadius: '4px', border: '1px solid #444', backgroundColor: '#2d2d2d', color: '#e0e0e0' }}
-                      />
-                    </div>
-                  </div>
-                </div>
-              </>
-            )}
-
-            <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', marginTop: '20px' }}>
-              <button
-                onClick={() => setShowConfig(false)}
-                style={{
-                  padding: '8px 16px',
-                  backgroundColor: '#666',
-                  color: '#fff',
-                  border: 'none',
-                  borderRadius: '4px',
-                  cursor: 'pointer',
-                }}
-              >
-                Cancelar
-              </button>
-              <button
-                onClick={handleConfigSave}
-                style={{
-                  padding: '8px 16px',
-                  backgroundColor: '#1976d2',
-                  color: '#fff',
-                  border: 'none',
-                  borderRadius: '4px',
-                  cursor: 'pointer',
-                }}
-              >
-                Salvar
-              </button>
-            </div>
-          </div>
+            className={`progress-bar ${progress < 30 ? 'indeterminate' : ''}`}
+            style={{ width: progress >= 30 ? `${progress}%` : undefined }}
+          />
         </div>
       )}
     </div>
   );
-}
+};

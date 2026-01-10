@@ -120,7 +120,7 @@ export class VoskProvider implements STTProvider {
     const ready = new Promise<void>((resolve, reject) => {
       const handleReady = (message: any) => {
         if (message.type === 'ready') {
-          this.status = { state: 'running', modelId: config.modelId, language: message.language };
+          this.status = { state: 'listening', modelId: config.modelId, language: message.language };
           worker.off('message', handleReady);
           resolve();
         }
@@ -136,7 +136,7 @@ export class VoskProvider implements STTProvider {
 
     worker.on('message', (message) => {
       if (message.type === 'ready') {
-        this.status = { state: 'running', modelId: config.modelId, language: message.language };
+        this.status = { state: 'listening', modelId: config.modelId, language: message.language };
         return;
       }
       if (message.type === 'partial') {

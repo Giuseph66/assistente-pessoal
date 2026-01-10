@@ -17,8 +17,9 @@ export function RecordingsPanel(): JSX.Element {
   const loadRecordings = async () => {
     setIsLoading(true);
     try {
-      const result = await window.electron?.ipcRenderer.invoke('audio:list');
-      setRecordings(Array.isArray(result) ? result : []);
+      // const result = await window.electron?.ipcRenderer.invoke('audio:list');
+      // setRecordings(Array.isArray(result) ? result : []);
+      setRecordings([]); // Stub to prevent crash
     } finally {
       setIsLoading(false);
     }

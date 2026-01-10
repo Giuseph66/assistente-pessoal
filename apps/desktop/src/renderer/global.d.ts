@@ -37,7 +37,7 @@ declare global {
       onLevel: (cb: (event: { level: number; rms: number; ts: number }) => void) => () => void;
       onFinal: (cb: (event: STTFinalEvent) => void) => () => void;
       onStatus: (cb: (event: STTStatus) => void) => () => void;
-      onError: (cb: (event: { message: string; ts: number }) => void) => () => void;
+      onError: (cb: (event: { message: string; debug?: string; providerId?: string; ts: number }) => void) => () => void;
       onDebug: (cb: (event: { message: string; ts: number }) => void) => () => void;
     };
     models: {
@@ -87,7 +87,7 @@ declare global {
       onPartial: (cb: (event: STTPartialEvent) => void) => () => void;
       onFinal: (cb: (event: STTFinalEvent) => void) => () => void;
       onStatus: (cb: (event: STTStatus) => void) => () => void;
-      onError: (cb: (event: { message: string; ts: number }) => void) => () => void;
+      onError: (cb: (event: { message: string; debug?: string; providerId?: string; ts: number }) => void) => () => void;
       onDebug: (cb: (event: { message: string; ts: number }) => void) => () => void;
       onLevel: (cb: (event: { level: number; rms: number; ts: number }) => void) => () => void;
     };
@@ -131,16 +131,25 @@ declare global {
     };
     overlay: {
       setContentProtection: (enabled: boolean) => Promise<{ success: boolean; error?: string }>;
-      getContentProtection: () => Promise<{ 
-        enabled: boolean; 
-        platform: string; 
-        supportsContentProtection: boolean; 
+      getContentProtection: () => Promise<{
+        enabled: boolean;
+        platform: string;
+        supportsContentProtection: boolean;
         usingWorkarounds: boolean;
       }>;
       getDisplayCount: () => Promise<{ count: number }>;
       moveToNextMonitor: () => Promise<{ success: boolean; error?: string }>;
     };
+    electron: {
+      ipcRenderer: {
+        send: (channel: string, ...args: any[]) => void;
+        on: (channel: string, listener: (event: any, ...args: any[]) => void) => void;
+        once: (channel: string, listener: (event: any, ...args: any[]) => void) => void;
+        removeListener: (channel: string, listener: (event: any, ...args: any[]) => void) => void;
+        invoke: (channel: string, ...args: any[]) => Promise<any>;
+      };
+    };
   }
 }
 
-export {};
+export { };

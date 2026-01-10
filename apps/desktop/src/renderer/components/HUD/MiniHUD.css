@@ -1,0 +1,53 @@
+.mini-hud-container {
+  width: 64px;
+  height: 64px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  overflow: visible;
+  animation: miniPop 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  cursor: pointer;
+}
+
+.mini-hud-container:hover {
+  /*filter: drop-shadow(0 0 10px rgba(139, 92, 246, 0.5));*/
+  transform: scale(1.1);
+  transition: all 0.3s ease;
+}
+
+.mini-hud-tooltip {
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  transform: translateX(-50%) translateY(-10px);
+  background: rgba(10, 10, 10, 0.95);
+  border: 1px solid rgba(139, 92, 246, 0.3);
+  border-radius: 4px;
+  padding: 4px 10px;
+  font-family: var(--font-sans);
+  font-size: 10px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  transition: all 0.2s ease;
+  z-index: 100;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
+
+.mini-hud-container:hover .mini-hud-tooltip {
+  opacity: 1;
+  transform: translateX(-50%) translateY(-15px);
+}
+
+.mini-hud-container:active {
+  transform: scale(0.95);
+}
+
+@keyframes miniPop {
+  0% { transform: scale(0); opacity: 0; }
+  70% { transform: scale(1.1); }
+  100% { transform: scale(1); opacity: 1; }
+}

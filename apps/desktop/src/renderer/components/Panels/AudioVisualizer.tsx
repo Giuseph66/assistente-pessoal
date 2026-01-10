@@ -1,21 +1,25 @@
 import { useEffect, useRef } from 'react';
 
+const clampLevel = (value: number): number => Math.max(0, Math.min(1, value));
+
 interface AudioVisualizerProps {
     analyser: AnalyserNode | null;
     level?: number | null;
+    levelRef?: { current: number };
     width?: number;
     height?: number;
 }
 
-export function AudioVisualizer({ analyser, level, width = 360, height = 64 }: AudioVisualizerProps): JSX.Element {
+export function AudioVisualizer({ analyser, level, levelRef, width = 360, height = 64 }: AudioVisualizerProps): JSX.Element {
     const canvasRef = useRef<HTMLCanvasElement | null>(null);
     const animationFrameRef = useRef<number | null>(null);
     const smoothedHeightsRef = useRef<number[]>([]);
-    const levelRef = useRef(0);
+    const internalLevelRef = useRef(0);
+    const externalLevelRef = levelRef;
 
     useEffect(() => {
         if (typeof level === 'number') {
-            levelRef.current = Math.max(0, Math.min(1, level));
+            internalLevelRef.current = clampLevel(level);
         }
     }, [level]);
 
@@ -51,16 +55,30 @@ export function AudioVisualizer({ analyser, level, width = 360, height = 64 }: A
 
             // Smoothing factor (lower = smoother/slower, higher = more reactive)
             const smoothing = 0.15;
+            const fallbackLevel = clampLevel(
+                externalLevelRef ? externalLevelRef.current : internalLevelRef.current
+            );
 
             for (let i = 0; i < barCount; i++) {
-                // Sample frequency data
+                // Sample frequency data with averaging for better representation
                 let rawValue = 0;
                 if (analyser && dataArray) {
-                    const step = Math.max(1, Math.floor(bufferLength / (barCount * 1.5)));
-                    rawValue = (dataArray[i * step] || 0) / 255;
+                    // We focus on the lower to mid frequency range where voice is most active
+                    // Using a non-linear mapping to give more space to lower frequencies
+                    const binRange = Math.floor(bufferLength * 0.6); // Focus on first 60% of bins
+                    const binStart = Math.floor((i / barCount) * binRange);
+                    const binEnd = Math.floor(((i + 1) / barCount) * binRange);
+
+                    let sum = 0;
+                    let count = 0;
+                    for (let j = binStart; j < binEnd; j++) {
+                        sum += dataArray[j];
+                        count++;
+                    }
+                    rawValue = count > 0 ? (sum / count) / 255 : 0;
                 } else {
                     const curve = 0.35 + 0.65 * Math.sin((i / barCount) * Math.PI);
-                    rawValue = levelRef.current * curve;
+                    rawValue = fallbackLevel * curve;
                 }
 
                 // Apply smoothing
@@ -119,7 +137,7 @@ export function AudioVisualizer({ analyser, level, width = 360, height = 64 }: A
                 cancelAnimationFrame(animationFrameRef.current);
             }
         };
-    }, [analyser]);
+    }, [analyser, levelRef]);
 
     return (
         <canvas

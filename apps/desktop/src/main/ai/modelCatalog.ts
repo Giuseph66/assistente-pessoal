@@ -23,6 +23,9 @@ const DEFAULT_CATALOG: ModelCatalog = {
           supportsVision: true,
           maxTokens: 8192,
           supportsStreaming: false,
+          metadata: {
+            category: 'Modelos de saida de texto',
+          },
         },
         {
           id: 'gemini-2.5-flash-lite',
@@ -30,6 +33,108 @@ const DEFAULT_CATALOG: ModelCatalog = {
           supportsVision: true,
           maxTokens: 8192,
           supportsStreaming: false,
+          metadata: {
+            category: 'Modelos de saida de texto',
+          },
+        },
+        {
+          id: 'gemini-2.5-flash-tts',
+          name: 'Gemini 2.5 Flash TTS',
+          supportsVision: true,
+          supportsStreaming: false,
+          metadata: {
+            category: 'Modelos generativos multimodais',
+          },
+        },
+        {
+          id: 'gemini-3-flash',
+          name: 'Gemini 3 Flash',
+          supportsVision: true,
+          supportsStreaming: false,
+          metadata: {
+            category: 'Modelos de saida de texto',
+          },
+        },
+        {
+          id: 'gemini-robotics-er-1.5-preview',
+          name: 'Gemini Robotics ER 1.5 Preview',
+          supportsVision: false,
+          supportsStreaming: false,
+          metadata: {
+            category: 'Outros modelos',
+          },
+        },
+        {
+          id: 'gemma-3-12b',
+          name: 'Gemma 3 12B',
+          supportsVision: false,
+          supportsStreaming: false,
+          metadata: {
+            category: 'Outros modelos',
+          },
+        },
+        {
+          id: 'gemma-3-1b',
+          name: 'Gemma 3 1B',
+          supportsVision: false,
+          supportsStreaming: false,
+          metadata: {
+            category: 'Outros modelos',
+          },
+        },
+        {
+          id: 'gemma-3-27b',
+          name: 'Gemma 3 27B',
+          supportsVision: false,
+          supportsStreaming: false,
+          metadata: {
+            category: 'Outros modelos',
+          },
+        },
+        {
+          id: 'gemma-3-2b',
+          name: 'Gemma 3 2B',
+          supportsVision: false,
+          supportsStreaming: false,
+          metadata: {
+            category: 'Outros modelos',
+          },
+        },
+        {
+          id: 'gemma-3-4b',
+          name: 'Gemma 3 4B',
+          supportsVision: false,
+          supportsStreaming: false,
+          metadata: {
+            category: 'Outros modelos',
+          },
+        },
+        {
+          id: 'gemini-2.5-flash-native-audio-dialog',
+          name: 'Gemini 2.5 Flash Native Audio Dialog',
+          supportsVision: false,
+          supportsStreaming: false,
+          metadata: {
+            category: 'API Live',
+          },
+        },
+        {
+          id: 'gemini-2.5-flash-native-audio-preview-12-2025',
+          name: 'Gemini 2.5 Flash Native Audio Preview 12-2025',
+          supportsVision: false,
+          supportsStreaming: false,
+          metadata: {
+            category: 'API Live (preview)',
+          },
+        },
+        {
+          id: 'gemini-live-2.5-flash-preview',
+          name: 'Gemini Live 2.5 Flash Preview',
+          supportsVision: false,
+          supportsStreaming: false,
+          metadata: {
+            category: 'API Live (preview)',
+          },
         },
       ],
     },
@@ -46,6 +151,33 @@ const DEFAULT_CATALOG: ModelCatalog = {
     },
   },
 };
+
+function mergeCatalog(seed: ModelCatalog, existing: ModelCatalog): { catalog: ModelCatalog; updated: boolean } {
+  let updated = false;
+  const merged: ModelCatalog = {
+    version: Math.max(existing.version || 1, seed.version || 1),
+    providers: { ...existing.providers },
+  };
+
+  Object.entries(seed.providers || {}).forEach(([providerId, seedProvider]) => {
+    const existingProvider = merged.providers?.[providerId];
+    if (!existingProvider || !Array.isArray(existingProvider.models)) {
+      merged.providers[providerId] = { models: [...seedProvider.models] };
+      updated = true;
+      return;
+    }
+    const existingIds = new Set(existingProvider.models.map((model) => model.id));
+    seedProvider.models.forEach((model) => {
+      if (!existingIds.has(model.id)) {
+        existingProvider.models.push(model);
+        existingIds.add(model.id);
+        updated = true;
+      }
+    });
+  });
+
+  return { catalog: merged, updated };
+}
 
 export function getModelCatalogPath(): string | null {
   if (!app.isReady()) {
@@ -101,7 +233,15 @@ export function loadModelCatalog(): ModelCatalog {
     const raw = readFileSync(catalogPath, 'utf-8');
     const parsed = JSON.parse(raw);
     if (parsed && typeof parsed === 'object' && parsed.providers) {
-      return parsed as ModelCatalog;
+      const { catalog, updated } = mergeCatalog(seedCatalog, parsed as ModelCatalog);
+      if (updated) {
+        try {
+          writeFileSync(catalogPath, JSON.stringify(catalog, null, 2));
+        } catch {
+          // ignore write failures
+        }
+      }
+      return catalog;
     }
   } catch {
     return seedCatalog;
