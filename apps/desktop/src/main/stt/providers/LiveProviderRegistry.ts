@@ -1,4 +1,4 @@
-import type { LiveTranscriptionProviderId } from '@ricky/shared';
+import type { LiveTranscriptionProviderId } from '@neo/shared';
 import type { LiveTranscriptionProvider } from './LiveTranscriptionProvider';
 import { VoskLiveProvider } from './VoskLiveProvider';
 import { OpenAIRealtimeTranscriptionProvider } from './OpenAIRealtimeTranscriptionProvider';

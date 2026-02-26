@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Screenshot } from '@ricky/shared';
+import { Screenshot } from '@neo/shared';
 
 export function ScreenshotHistoryPanel(): JSX.Element {
   const [screenshots, setScreenshots] = useState<Screenshot[]>([]);

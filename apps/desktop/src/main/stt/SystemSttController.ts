@@ -1,6 +1,6 @@
 import { EventEmitter } from 'events';
-import { LiveTranscriptionProviderId, STTConfig, STTFinalEvent, STTPartialEvent, STTStatus } from '@ricky/shared';
-import { getLogger } from '@ricky/logger';
+import { LiveTranscriptionProviderId, STTConfig, STTFinalEvent, STTPartialEvent, STTStatus } from '@neo/shared';
+import { getLogger } from '@neo/logger';
 import { ModelManager } from './models/ModelManager';
 import { getConfigStore } from '../storage/configStore';
 import { SystemAudioCapture } from '../audio/system/SystemAudioCapture';
@@ -9,6 +9,7 @@ import type { LiveTranscriptionError, LiveTranscriptionProvider } from './provid
 import { DatabaseManager } from '../database';
 import { ApiKeyPool } from '../ai/ApiKeyPool';
 import { getKeyStorage } from '../ai/AIServiceManager';
+import { getOAuthController } from '../auth/openaiOAuth';
 
 const logger = getLogger();
 
@@ -92,18 +93,18 @@ export class SystemSttController {
 
       const apiKey =
         providerId === 'openai_realtime_transcribe'
-          ? this.resolveApiKey('openai')
+          ? await this.resolveApiKey('openai')
           : providerId === 'gemini_live'
-          ? this.resolveApiKey('gemini')
-          : undefined;
+            ? await this.resolveApiKey('gemini')
+            : undefined;
 
       if ((providerId === 'openai_realtime_transcribe' || providerId === 'gemini_live') && !apiKey) {
         const hint =
           providerId === 'openai_realtime_transcribe'
             ? this.getApiKeyUnavailableReason('openai')
             : providerId === 'gemini_live'
-            ? this.getApiKeyUnavailableReason('gemini')
-            : null;
+              ? this.getApiKeyUnavailableReason('gemini')
+              : null;
         const message =
           hint ||
           `Chave de API nao configurada para ${providerId === 'gemini_live' ? 'Gemini' : 'OpenAI'}`;
@@ -242,17 +243,45 @@ export class SystemSttController {
     }
   }
 
-  private resolveApiKey(providerId: 'openai' | 'gemini'): { key: string; keyId?: number } | null {
+  private async resolveApiKey(providerId: 'openai' | 'gemini'): Promise<{ key: string; keyId?: number } | null> {
     if (!this.db) return null;
     const keyPool = new ApiKeyPool(this.db, getKeyStorage());
-    const apiKey = keyPool.getNextKey(providerId);
-    if (!apiKey?.key) return null;
-    return { key: apiKey.key, keyId: apiKey.id };
+    const apiKey = await keyPool.getNextKeyAsync(providerId, {
+      // STT OpenAI tenta primeiro chave manual.
+      skipOAuth: providerId === 'openai',
+    });
+    if (apiKey?.key) {
+      return { key: apiKey.key, keyId: apiKey.id > 0 ? apiKey.id : undefined };
+    }
+
+    if (providerId === 'openai') {
+      const oauthKey = await keyPool.getNextKeyAsync('openai-codex');
+      if (oauthKey?.key) {
+        logger.warn('System STT OpenAI: using OAuth token fallback (openai-codex) because no manual API key is available');
+        return { key: oauthKey.key, keyId: oauthKey.id > 0 ? oauthKey.id : undefined };
+      }
+    }
+
+    return null;
   }
 
   private getApiKeyUnavailableReason(providerId: 'openai' | 'gemini'): string | null {
     if (!this.db) return null;
     const keys = this.db.getAIApiKeys(providerId);
+    if (providerId === 'openai') {
+      try {
+        const controller = getOAuthController();
+        const hasOAuth = controller
+          .getTokenStore()
+          .listProfiles()
+          .some((profile) => profile.isActive && profile.isEnabled && !profile.isExpired);
+        if (hasOAuth) {
+          return 'OpenAI OAuth conectado, mas o áudio em tempo real não encontrou credencial válida para este endpoint. Tente adicionar uma API key manual da OpenAI.';
+        }
+      } catch {
+        // ignore
+      }
+    }
     if (!keys || keys.length === 0) return null;
     const lastError = keys.map((k) => k.last_error_code).find(Boolean);
     const hasInsufficientQuota = keys.some((k) => k.last_error_code === 'insufficient_quota');

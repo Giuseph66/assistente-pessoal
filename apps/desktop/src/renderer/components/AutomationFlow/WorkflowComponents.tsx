@@ -1,20 +1,23 @@
 import React, { useState, useEffect } from 'react';
-import { FlowNode, FlowNodeType, MappingPoint, ImageTemplate } from '@ricky/shared';
+import { FlowNode, FlowNodeType, MappingPoint, ImageTemplate } from '@neo/shared';
 import { CustomSelect } from '../Modals/SettingsSections/CustomSelect';
+import { FlowIcon, FlowIconName } from './FlowIcons';
+import { AIBrainNodeProperties } from './AIBrainNodeProperties';
 
 // --- Node Palette ---
 
-const PALETTE_ITEMS: { type: FlowNodeType; label: string; icon: string; category: string }[] = [
-    { type: 'start', label: 'Início', icon: '▶', category: 'Controle' },
-    { type: 'end', label: 'Fim', icon: '■', category: 'Controle' },
-    { type: 'action.clickMappedPoint', label: 'Clique Mapeado', icon: '🖱️', category: 'Ações' },
-    { type: 'action.clickCoordinates', label: 'Clique Coord.', icon: '📍', category: 'Ações' },
-    { type: 'action.clickFoundImage', label: 'Clicar Imagem Encontrada', icon: '🎯', category: 'Ações' },
-    { type: 'action.typeText', label: 'Digitar Texto', icon: '⌨️', category: 'Ações' },
-    { type: 'action.pressKey', label: 'Pressionar Tecla', icon: '🎹', category: 'Ações' },
-    { type: 'action.wait', label: 'Aguardar', icon: '⏳', category: 'Ações' },
-    { type: 'condition.findImage', label: 'Buscar Imagem', icon: '🔍', category: 'Condições' },
-    { type: 'logic.loop', label: 'Loop', icon: '🔁', category: 'Lógica' },
+const PALETTE_ITEMS: { type: FlowNodeType; label: string; icon: FlowIconName; category: string }[] = [
+    { type: 'start', label: 'Início', icon: 'play', category: 'Controle' },
+    { type: 'end', label: 'Fim', icon: 'stopSquare', category: 'Controle' },
+    { type: 'action.clickMappedPoint', label: 'Clique Mapeado', icon: 'mousePointer', category: 'Ações' },
+    { type: 'action.clickCoordinates', label: 'Clique Coord.', icon: 'mapPin', category: 'Ações' },
+    { type: 'action.clickFoundImage', label: 'Clicar Imagem Encontrada', icon: 'target', category: 'Ações' },
+    { type: 'action.typeText', label: 'Digitar Texto', icon: 'keyboard', category: 'Ações' },
+    { type: 'action.pressKey', label: 'Pressionar Tecla', icon: 'keyboard', category: 'Ações' },
+    { type: 'action.wait', label: 'Aguardar', icon: 'clock', category: 'Ações' },
+    { type: 'condition.findImage', label: 'Buscar Imagem', icon: 'search', category: 'Condições' },
+    { type: 'logic.loop', label: 'Loop', icon: 'repeat', category: 'Lógica' },
+    { type: 'ai.brain', label: 'Nó IA (Cérebro)', icon: 'brain', category: 'IA' },
 ];
 
 export function NodePalette() {
@@ -38,7 +41,9 @@ export function NodePalette() {
                             draggable
                             onDragStart={(e) => onDragStart(e, item.type)}
                         >
-                            <div className="palette-item-icon">{item.icon}</div>
+                            <div className="palette-item-icon">
+                                <FlowIcon name={item.icon} size={16} />
+                            </div>
                             <span style={{ fontSize: '13px', fontWeight: 500 }}>{item.label}</span>
                         </div>
                     ))}
@@ -90,7 +95,9 @@ export function NodePropertiesPanel({ node, onChange, onTestLog }: NodePropertie
                     textAlign: 'center',
                     gap: '12px'
                 }}>
-                    <div style={{ fontSize: '24px', opacity: 0.5 }}>👆</div>
+                    <div style={{ fontSize: '24px', opacity: 0.5 }}>
+                        <FlowIcon name="hand" size={24} />
+                    </div>
                     <p style={{ fontSize: '13px', margin: 0 }}>Selecione um bloco para<br />editar suas propriedades.</p>
                 </div>
             </div>
@@ -513,11 +520,11 @@ export function NodePropertiesPanel({ node, onChange, onTestLog }: NodePropertie
                         >
                             <span>
                                 {listeningKey 
-                                    ? '⏳ Pressione uma tecla...' 
+                                    ? 'Pressione uma tecla...' 
                                     : mainKey || 'Clique para capturar tecla'}
                             </span>
-                            {keyValidation?.isValid === true && <span style={{ fontSize: '16px' }}>✓</span>}
-                            {keyValidation?.isValid === false && <span style={{ fontSize: '16px' }}>✗</span>}
+                            {keyValidation?.isValid === true && <FlowIcon name="check" size={16} />}
+                            {keyValidation?.isValid === false && <FlowIcon name="x" size={16} />}
                         </button>
                         {keyValidation && (
                             <div style={{
@@ -532,8 +539,8 @@ export function NodePropertiesPanel({ node, onChange, onTestLog }: NodePropertie
                                 border: `1px solid ${keyValidation.isValid ? 'rgba(16, 185, 129, 0.3)' : 'rgba(239, 68, 68, 0.3)'}`
                             }}>
                                 {keyValidation.isValid 
-                                    ? `✓ Tecla "${mainKey}" cadastrada e suportada` 
-                                    : keyValidation.message || `✗ Tecla não suportada`}
+                                    ? `Tecla "${mainKey}" cadastrada e suportada` 
+                                    : keyValidation.message || 'Tecla não suportada'}
                             </div>
                         )}
                     </div>
@@ -576,7 +583,17 @@ export function NodePropertiesPanel({ node, onChange, onTestLog }: NodePropertie
                             gap: '8px'
                         }}
                     >
-                        {testing ? '⏳ Testando...' : '🧪 Testar Tecla'}
+                        {testing ? (
+                            <>
+                                <FlowIcon name="clock" size={14} />
+                                Testando...
+                            </>
+                        ) : (
+                            <>
+                                <FlowIcon name="flask" size={14} />
+                                Testar Tecla
+                            </>
+                        )}
                     </button>
                     <div style={{ fontSize: '11px', color: 'var(--workflow-text-secondary)', marginTop: '4px', textAlign: 'center' }}>
                         Verifique o console para ver os resultados
@@ -631,7 +648,10 @@ export function NodePropertiesPanel({ node, onChange, onTestLog }: NodePropertie
                             color: 'var(--workflow-text-secondary)',
                             border: '1px solid rgba(99, 102, 241, 0.2)'
                         }}>
-                            💡 Este bloco clica na última imagem encontrada por um bloco "Buscar Imagem" anterior.
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                <FlowIcon name="lightbulb" size={14} />
+                                <span>Este bloco clica na última imagem encontrada por um bloco "Buscar Imagem" anterior.</span>
+                            </div>
                         </div>
                         <div>
                             <label style={labelStyle}>Template (Opcional)</label>
@@ -729,7 +749,17 @@ export function NodePropertiesPanel({ node, onChange, onTestLog }: NodePropertie
                                         gap: '8px'
                                     }}
                                 >
-                                    {testing ? '⏳ Testando...' : '🧪 Testar e Clicar'}
+                                    {testing ? (
+                                        <>
+                                            <FlowIcon name="clock" size={14} />
+                                            Testando...
+                                        </>
+                                    ) : (
+                                        <>
+                                            <FlowIcon name="flask" size={14} />
+                                            Testar e Clicar
+                                        </>
+                                    )}
                                 </button>
                                 <div style={{ fontSize: '11px', color: 'var(--workflow-text-secondary)', marginTop: '4px', textAlign: 'center' }}>
                                     Verifique o console para ver os resultados
@@ -817,7 +847,17 @@ export function NodePropertiesPanel({ node, onChange, onTestLog }: NodePropertie
                                         gap: '8px'
                                     }}
                                 >
-                                    {testing ? '⏳ Testando...' : '🧪 Testar Busca'}
+                                    {testing ? (
+                                        <>
+                                            <FlowIcon name="clock" size={14} />
+                                            Testando...
+                                        </>
+                                    ) : (
+                                        <>
+                                            <FlowIcon name="flask" size={14} />
+                                            Testar Busca
+                                        </>
+                                    )}
                                 </button>
                                 <div style={{ fontSize: '11px', color: 'var(--workflow-text-secondary)', marginTop: '4px', textAlign: 'center' }}>
                                     Verifique o console para ver os resultados
@@ -876,6 +916,14 @@ export function NodePropertiesPanel({ node, onChange, onTestLog }: NodePropertie
                     </>
                 );
 
+            case 'ai.brain':
+                return (
+                    <AIBrainNodeProperties
+                        data={data as any}
+                        onUpdate={(field, value) => updateData(field, value)}
+                    />
+                );
+
             default:
                 return (
                     <div style={{
@@ -918,6 +966,9 @@ interface FloatingToolbarProps {
     isFullscreen: boolean;
     onValidate: () => void;
     onSave: () => void;
+    onExportAI: () => void;
+    onToggleAgent: () => void;
+    isAgentOpen: boolean;
     onRun: () => void;
     isSaving: boolean;
 }
@@ -928,25 +979,38 @@ export function FloatingToolbar({
     isFullscreen,
     onValidate,
     onSave,
+    onExportAI,
+    onToggleAgent,
+    isAgentOpen,
     onRun,
     isSaving
 }: FloatingToolbarProps) {
     return (
         <div className="workflow-panel workflow-toolbar">
             <button className="btn-workflow" onClick={onBack} title="Voltar">
-                <span style={{ fontSize: '16px' }}>←</span> Voltar
+                <FlowIcon name="arrowLeft" size={16} /> Voltar
             </button>
             <div style={{ width: '1px', background: 'var(--workflow-border)', margin: '0 4px', height: '20px', alignSelf: 'center' }} />
            
             <button className="btn-workflow" onClick={onValidate} title="Verificar erros">
-                <span style={{ fontSize: '16px' }}>✓</span> Validar
+                <FlowIcon name="check" size={16} /> Validar
             </button>
             <button className="btn-workflow" onClick={onSave} disabled={isSaving} title="Salvar alterações">
-                <span style={{ fontSize: '16px' }}>💾</span> {isSaving ? 'Salvando...' : 'Salvar'}
+                <FlowIcon name="save" size={16} /> {isSaving ? 'Salvando...' : 'Salvar'}
+            </button>
+            <button className="btn-workflow" onClick={onExportAI} title="Exportar fluxo em JSON para IA">
+                <FlowIcon name="copy" size={16} /> Exportar
+            </button>
+            <button
+                className={`btn-workflow ${isAgentOpen ? 'btn-workflow-primary' : ''}`}
+                onClick={onToggleAgent}
+                title="Conversar com agente para criar/organizar o fluxo"
+            >
+                <FlowIcon name="brain" size={16} /> Agente
             </button>
             <div style={{ width: '1px', background: 'var(--workflow-border)', margin: '0 4px', height: '20px', alignSelf: 'center' }} />
             <button className="btn-workflow btn-workflow-primary" onClick={onRun} title="Executar Workflow">
-                <span style={{ fontSize: '16px' }}>▶</span> Executar
+                <FlowIcon name="play" size={16} /> Executar
             </button>
         </div>
     );
@@ -954,7 +1018,7 @@ export function FloatingToolbar({
 
 // --- Execution Monitor ---
 
-import { FlowExecutionStatus } from '@ricky/shared';
+import { FlowExecutionStatus } from '@neo/shared';
 
 interface ExecutionMonitorProps {
     status: FlowExecutionStatus | null;
@@ -1000,23 +1064,31 @@ export function ExecutionMonitor({
 
                 <div className="monitor-controls">
                     {state === 'running' && (
-                        <button className="btn-workflow" onClick={onPause}>⏸ Pausar</button>
+                        <button className="btn-workflow" onClick={onPause}>
+                            <FlowIcon name="pause" size={14} /> Pausar
+                        </button>
                     )}
                     {state === 'paused' && (
-                        <button className="btn-workflow" onClick={onResume}>▶ Retomar</button>
+                        <button className="btn-workflow" onClick={onResume}>
+                            <FlowIcon name="play" size={14} /> Retomar
+                        </button>
                     )}
                     {(state === 'running' || state === 'paused') && (
-                        <button className="btn-workflow" style={{ color: '#ef4444', borderColor: 'rgba(239, 68, 68, 0.3)' }} onClick={onStop}>⏹ Parar</button>
+                        <button className="btn-workflow" style={{ color: '#ef4444', borderColor: 'rgba(239, 68, 68, 0.3)' }} onClick={onStop}>
+                            <FlowIcon name="stopSquare" size={14} /> Parar
+                        </button>
                     )}
                     {(state === 'completed' || state === 'error' || state === 'stopped') && (
-                        <button className="btn-workflow" onClick={onClose}>✕ Fechar</button>
+                        <button className="btn-workflow" onClick={onClose}>
+                            <FlowIcon name="x" size={14} /> Fechar
+                        </button>
                     )}
                 </div>
             </div>
 
             {error && (
                 <div className="monitor-error">
-                    <span>⚠️</span>
+                    <FlowIcon name="alertTriangle" size={14} />
                     {error}
                 </div>
             )}

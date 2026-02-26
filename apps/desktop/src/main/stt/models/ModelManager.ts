@@ -5,10 +5,10 @@ import { basename, dirname, join } from 'path';
 import { pipeline } from 'stream/promises';
 import { createHash } from 'crypto';
 import extractZip from 'extract-zip';
-import { ModelDescriptor, InstalledModel } from '@ricky/shared';
+import { ModelDescriptor, InstalledModel } from '@neo/shared';
 import { modelCatalog } from './modelCatalog';
 import { getConfigStore } from '../../storage/configStore';
-import { getLogger } from '@ricky/logger';
+import { getLogger } from '@neo/logger';
 import https from 'https';
 import http, { type IncomingMessage } from 'http';
 

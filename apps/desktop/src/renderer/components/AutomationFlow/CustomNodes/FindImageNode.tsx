@@ -1,4 +1,5 @@
 import { Handle, Position } from '@xyflow/react';
+import { FlowIcon } from '../FlowIcons';
 
 export function FindImageNode({ data }: { data: any }) {
   const isRunning = data.isRunning;
@@ -8,7 +9,9 @@ export function FindImageNode({ data }: { data: any }) {
       <Handle type="target" position={Position.Left} />
 
       <div className="node-header">
-        <div className="node-icon" style={{ color: '#f59e0b' }}>🔍</div>
+        <div className="node-icon" style={{ color: '#f59e0b' }}>
+          <FlowIcon name="search" size={15} />
+        </div>
         <div className="node-title-container" style={{ flex: 1, overflow: 'hidden' }}>
           <div className="node-type">CONDICIONAL</div>
           <div className="node-title">Buscar Imagem</div>
@@ -47,4 +50,3 @@ export function FindImageNode({ data }: { data: any }) {
     </div>
   );
 }
-

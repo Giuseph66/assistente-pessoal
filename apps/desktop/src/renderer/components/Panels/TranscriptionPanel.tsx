@@ -13,7 +13,7 @@ import {
   SubtitleSegment,
   SystemAudioSourceInfo,
   TranscribeProgress,
-} from '@ricky/shared';
+} from '@neo/shared';
 import { useSttMicAnalyser } from '../../store/sttMicStore';
 import { SystemAudioControls } from '../../TranscriptionTab/SystemAudioControls';
 import { RecordingsList } from '../../TranscriptionTab/RecordingsList';

@@ -1,7 +1,7 @@
 import { spawn, ChildProcess } from 'child_process';
 import { join } from 'path';
 import { existsSync } from 'fs';
-import { getLogger } from '@ricky/logger';
+import { getLogger } from '@neo/logger';
 
 const logger = getLogger();
 
@@ -46,7 +46,7 @@ export class EngineManager {
 
     try {
       if (!existsSync(this.enginePath)) {
-        logger.warn({ path: this.enginePath }, 'Engine binary not found (build @ricky/engine)');
+        logger.warn({ path: this.enginePath }, 'Engine binary not found (build @neo/engine)');
         return;
       }
       logger.info({ path: this.enginePath }, 'Starting engine process');

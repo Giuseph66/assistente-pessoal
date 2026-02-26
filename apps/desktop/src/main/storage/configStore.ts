@@ -1,5 +1,5 @@
 import Store from 'electron-store';
-import { InstalledModel, STTConfig } from '@ricky/shared';
+import { InstalledModel, STTConfig } from '@neo/shared';
 
 export type STTStoreState = {
   config: STTConfig;

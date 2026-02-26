@@ -1,4 +1,4 @@
-import { OCRBlock } from '@ricky/shared';
+import { OCRBlock } from '@neo/shared';
 import { OCRProvider, OCRRequest } from './OCRProvider';
 
 export class TesseractJsProvider implements OCRProvider {

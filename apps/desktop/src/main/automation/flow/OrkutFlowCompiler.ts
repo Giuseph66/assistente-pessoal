@@ -1,4 +1,4 @@
-import { WorkflowGraph, FlowNode, FlowEdge } from '@ricky/shared';
+import { WorkflowGraph, FlowNode, FlowEdge } from '@neo/shared';
 
 export interface ValidationIssue {
   type: 'error' | 'warning';
@@ -76,6 +76,46 @@ export class OrkutFlowCompiler {
             nodeId: node.id,
           });
         }
+      } else if (node.type === 'ai.brain') {
+        const usage = handleUsage.get(node.id);
+        const routes = Array.isArray((node.data as any)?.data?.routes)
+          ? (node.data as any).data.routes.map((route: unknown) => String(route || '').trim()).filter(Boolean)
+          : [];
+        const defaultRoute = String((node.data as any)?.data?.defaultRoute || '').trim();
+
+        if (routes.length === 0) {
+          warnings.push({
+            type: 'warning',
+            message: 'Nó IA sem rotas configuradas.',
+            nodeId: node.id,
+          });
+        }
+
+        if (defaultRoute && !routes.includes(defaultRoute)) {
+          warnings.push({
+            type: 'warning',
+            message: `Nó IA com defaultRoute "${defaultRoute}" fora de routes.`,
+            nodeId: node.id,
+          });
+        }
+
+        if (!usage?.has('ERROR')) {
+          warnings.push({
+            type: 'warning',
+            message: 'Nó IA não possui saída conectada para "ERROR".',
+            nodeId: node.id,
+          });
+        }
+
+        for (const route of routes) {
+          if (!usage?.has(route)) {
+            warnings.push({
+              type: 'warning',
+              message: `Nó IA com rota "${route}" sem conexão.`,
+              nodeId: node.id,
+            });
+          }
+        }
       }
     }
 
@@ -134,4 +174,3 @@ export class OrkutFlowCompiler {
     return { nodeById, edgesBySource, startNode };
   }
 }
-

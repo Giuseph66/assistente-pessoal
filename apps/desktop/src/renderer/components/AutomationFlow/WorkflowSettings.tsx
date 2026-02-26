@@ -1,10 +1,8 @@
 import { useState, useEffect } from 'react';
-import { WorkflowGraph } from '@ricky/shared';
-import { WorkflowEditor } from './WorkflowEditor';
+import { WorkflowGraph } from '@neo/shared';
 
 export function WorkflowSettings() {
   const [workflows, setWorkflows] = useState<WorkflowGraph[]>([]);
-  const [editingWorkflow, setEditingWorkflow] = useState<WorkflowGraph | null>(null);
   const [loading, setLoading] = useState(true);
 
   const loadWorkflows = async () => {
@@ -43,20 +41,26 @@ export function WorkflowSettings() {
       edges: [],
     };
     await window.automation.flow.saveWorkflow(newWorkflow);
-    setEditingWorkflow(newWorkflow);
-    // setEditingWorkflow(newWorkflow); // Removed inline editing
     loadWorkflows();
     handleEditWorkflow(newWorkflow); // Open in new window after creation
+  };
+
+  const handleRename = async (workflow: WorkflowGraph) => {
+    const nextName = window.prompt('Novo nome do workflow:', workflow.name)?.trim();
+    if (!nextName || nextName === workflow.name) return;
+
+    await window.automation.flow.saveWorkflow({
+      ...workflow,
+      name: nextName,
+      updatedAt: Date.now(),
+    });
+    await loadWorkflows();
   };
 
   const handleDelete = async (id: string) => {
     if (!confirm('Tem certeza que deseja deletar este workflow visual?')) return;
     await window.automation.flow.deleteWorkflow(id);
     loadWorkflows();
-  };
-
-  const handleCreateWorkflow = () => {
-    window.electron.ipcRenderer.send('window:open-workflow-editor');
   };
 
   const handleEditWorkflow = (workflow: WorkflowGraph) => {
@@ -99,6 +103,13 @@ export function WorkflowSettings() {
                 </button>
                 <button
                   className="btn-get-key-premium"
+                  style={{ background: 'rgba(255,255,255,0.06)', borderColor: 'rgba(255,255,255,0.18)' }}
+                  onClick={() => handleRename(wf)}
+                >
+                  📝
+                </button>
+                <button
+                  className="btn-get-key-premium"
                   style={{ background: 'rgba(239, 68, 68, 0.1)', borderColor: 'rgba(239, 68, 68, 0.3)', color: '#ef4444' }}
                   onClick={() => handleDelete(wf.id)}
                 >
@@ -112,4 +123,3 @@ export function WorkflowSettings() {
     </div>
   );
 }
-

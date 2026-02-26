@@ -1,11 +1,11 @@
 import { EventEmitter } from 'events';
-import { getLogger } from '@ricky/logger';
+import { getLogger } from '@neo/logger';
 import {
   TranslationStartOptions,
   TranslationStatus,
   TranslationResult,
   TranslationBlock,
-} from '@ricky/shared';
+} from '@neo/shared';
 import { captureAreaInteractive, captureScreenshot } from '../../screenshot';
 import { getOverlayManager } from '../../overlay';
 import { OCRProvider } from './ocr/OCRProvider';

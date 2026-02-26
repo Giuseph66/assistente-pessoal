@@ -1,5 +1,5 @@
 import { STTProvider, STTEvent } from '../interface.js';
-import { getLogger } from '@ricky/logger';
+import { getLogger } from '@neo/logger';
 import { ChildProcess } from 'child_process';
 import { join } from 'path';
 import { homedir } from 'os';

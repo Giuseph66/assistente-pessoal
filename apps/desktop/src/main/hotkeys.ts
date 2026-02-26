@@ -1,6 +1,6 @@
 import { globalShortcut, app, BrowserWindow } from 'electron';
-import { getConfigManager } from '@ricky/config';
-import { getLogger } from '@ricky/logger';
+import { getConfigManager } from '@neo/config';
+import { getLogger } from '@neo/logger';
 import { getOverlayManager } from './overlay';
 import { getSttController } from './stt/sttService';
 import { captureAreaInteractiveConfirmed } from './screenshot';
@@ -17,6 +17,19 @@ const config = getConfigManager();
  */
 export class HotkeysManager {
   private registeredHotkeys: Set<string> = new Set();
+  private static readonly SAFE_TEXT_HIGHLIGHT_CLEAR_HOTKEY = 'CommandOrControl+Alt+Escape';
+
+  private hasModifier(accelerator: string): boolean {
+    return /(?:^|\+)(CommandOrControl|Command|Cmd|Control|Ctrl|Alt|Option|Shift|Super|Meta)(?:\+|$)/i.test(accelerator);
+  }
+
+  private isFunctionKeyOnly(accelerator: string): boolean {
+    return /^F([1-9]|1[0-9]|2[0-4])$/i.test(accelerator.trim());
+  }
+
+  private isSafeGlobalAccelerator(accelerator: string): boolean {
+    return this.hasModifier(accelerator) || this.isFunctionKeyOnly(accelerator);
+  }
 
   /**
    * Registra todas as hotkeys configuradas
@@ -79,7 +92,18 @@ export class HotkeysManager {
 
     // Text Highlight Overlay (Capture OCR-based text boxes)
     const textHighlightKey = (config.getAll().hotkeys as any).textHighlight ?? 'Ctrl+E';
-    const textHighlightClearKey = (config.getAll().hotkeys as any).textHighlightClear ?? 'Escape';
+    const configuredTextHighlightClearKey = (config.getAll().hotkeys as any).textHighlightClear
+      ?? HotkeysManager.SAFE_TEXT_HIGHLIGHT_CLEAR_HOTKEY;
+    const textHighlightClearKey = this.isSafeGlobalAccelerator(configuredTextHighlightClearKey)
+      ? configuredTextHighlightClearKey
+      : HotkeysManager.SAFE_TEXT_HIGHLIGHT_CLEAR_HOTKEY;
+    if (textHighlightClearKey !== configuredTextHighlightClearKey) {
+      logger.warn(
+        { configured: configuredTextHighlightClearKey, fallback: textHighlightClearKey },
+        'textHighlightClear sem modificador nao pode ser global; fallback seguro aplicado'
+      );
+      config.set('hotkeys', 'textHighlightClear', textHighlightClearKey);
+    }
     this.register(textHighlightKey, () => {
       logger.debug('Hotkey: text highlight (OCR overlay)');
       runTextHighlight().catch((err) => {
@@ -167,6 +191,11 @@ export class HotkeysManager {
    * Registra uma hotkey específica
    */
   register(accelerator: string, callback: () => void | Promise<void>): boolean {
+    if (!this.isSafeGlobalAccelerator(accelerator)) {
+      logger.warn({ accelerator }, 'Skipped unsafe global hotkey without modifiers');
+      return false;
+    }
+
     // Remove hotkey anterior se existir
     if (this.registeredHotkeys.has(accelerator)) {
       globalShortcut.unregister(accelerator);

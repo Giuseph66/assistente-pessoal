@@ -1,6 +1,6 @@
 import { BrowserWindow, screen } from 'electron';
 import { join } from 'path';
-import { getLogger } from '@ricky/logger';
+import { getLogger } from '@neo/logger';
 
 const logger = getLogger();
 

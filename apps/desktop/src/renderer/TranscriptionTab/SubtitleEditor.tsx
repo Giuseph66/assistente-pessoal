@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { SubtitleSegment } from '@ricky/shared';
+import { SubtitleSegment } from '@neo/shared';
 
 type Props = {
   wavPath: string;

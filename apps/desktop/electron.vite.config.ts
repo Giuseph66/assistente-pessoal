@@ -30,6 +30,24 @@ const buildWorkerPlugin = () => {
   }
 }
 
+const xyflowJsxRuntimePlugin = () => {
+  return {
+    name: 'xyflow-jsx-runtime-alias',
+    enforce: 'pre',
+    async resolveId(id: string) {
+      if (
+        id.startsWith('@xyflow/react/jsx-runtime') ||
+        id.startsWith('@xyflow/react/jsx-dev-runtime')
+      ) {
+        const rewritten = id.replace('@xyflow/react', 'react')
+        const resolved = await this.resolve(rewritten, undefined, { skipSelf: true })
+        return resolved ? resolved.id : rewritten
+      }
+      return null
+    }
+  }
+}
+
 export default defineConfig({
     main: {
         plugins: [externalizeDepsPlugin(), buildWorkerPlugin()],
@@ -45,7 +63,17 @@ export default defineConfig({
         }
     },
     renderer: {
-        plugins: [react()],
+        plugins: [xyflowJsxRuntimePlugin(), react({ jsxImportSource: 'react' })],
+        resolve: {
+            alias: [
+                { find: /^@xyflow\/react\/jsx-runtime/, replacement: 'react/jsx-runtime' },
+                { find: /^@xyflow\/react\/jsx-dev-runtime/, replacement: 'react/jsx-dev-runtime' }
+            ]
+        },
+        optimizeDeps: {
+            include: ['react/jsx-runtime', 'react/jsx-dev-runtime'],
+            exclude: ['@xyflow/react']
+        },
         build: {
             outDir: 'dist/renderer'
         }

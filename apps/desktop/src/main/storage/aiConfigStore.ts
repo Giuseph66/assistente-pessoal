@@ -1,6 +1,6 @@
 
 import Store from 'electron-store';
-import { AIConfig } from '@ricky/shared';
+import { AIConfig } from '@neo/shared';
 
 type AIConfigStoreState = {
   lastConfig: Partial<AIConfig>;

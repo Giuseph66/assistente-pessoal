@@ -2,7 +2,7 @@
  * Tipos compartilhados para sistema de análise de IA
  */
 
-export type AIProviderId = 'gemini' | 'openai' | 'ollama' | 'custom';
+export type AIProviderId = 'gemini' | 'openai' | 'openai-codex' | 'ollama' | 'custom';
 
 export interface ModelInfo {
   id: string;

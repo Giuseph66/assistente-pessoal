@@ -1,5 +1,5 @@
 import { ipcMain, BrowserWindow } from 'electron';
-import { getLogger } from '@ricky/logger';
+import { getLogger } from '@neo/logger';
 import { getAutomationStore } from '../storage/automationStore';
 import { getAutomationService } from '../automation/AutomationService';
 import { getMappingService } from '../automation/MappingService';
@@ -13,7 +13,7 @@ import {
   Workflow,
   AutomationAction,
   MappingPointType,
-} from '@ricky/shared';
+} from '@neo/shared';
 
 const logger = getLogger();
 

@@ -15,7 +15,7 @@ import {
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 
-import { WorkflowGraph, FlowNode, FlowEdge, AutomationNodeData, FlowExecutionStatus } from '@ricky/shared';
+import { WorkflowGraph, FlowNode, FlowEdge, AutomationNodeData, FlowExecutionStatus } from '@neo/shared';
 import { NodePalette } from './NodePalette';
 import { NodePropertiesPanel } from './NodePropertiesPanel';
 import { ExecutionMonitorPanel } from './ExecutionMonitorPanel';

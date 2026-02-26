@@ -1,6 +1,6 @@
 import { EventEmitter } from 'events';
 import { spawn, spawnSync, ChildProcessWithoutNullStreams } from 'child_process';
-import { getLogger } from '@ricky/logger';
+import { getLogger } from '@neo/logger';
 
 const logger = getLogger();
 

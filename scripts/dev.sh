@@ -1,3 +1,3 @@
 #!/bin/bash
-pnpm --filter ricky-desktop dev
+pnpm --filter neo-desktop dev
 

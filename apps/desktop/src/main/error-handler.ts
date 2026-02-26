@@ -1,5 +1,5 @@
 import { app, dialog } from 'electron';
-import { getLogger } from '@ricky/logger';
+import { getLogger } from '@neo/logger';
 
 const logger = getLogger();
 

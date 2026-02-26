@@ -1,5 +1,5 @@
 import Store from 'electron-store';
-import { WorkflowGraph } from '@ricky/shared';
+import { WorkflowGraph } from '@neo/shared';
 
 interface AutomationFlowStoreState {
   workflows: WorkflowGraph[];

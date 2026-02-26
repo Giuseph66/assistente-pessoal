@@ -1,4 +1,4 @@
-import { ModelDescriptor } from '@ricky/shared';
+import { ModelDescriptor } from '@neo/shared';
 
 export const modelCatalog: ModelDescriptor[] = [
   {

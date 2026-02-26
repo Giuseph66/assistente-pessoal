@@ -456,3 +456,41 @@
   background: rgba(255, 255, 255, 0.3);
 }
 
+
+/* Provider Tabs */
+.ai-provider-tabs {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 8px;
+}
+
+.ai-provider-tab {
+  padding: 10px 20px;
+  background-color: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  color: #ccc;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.ai-provider-tab:hover {
+  background-color: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+.ai-provider-tab.active {
+  background-color: rgba(100, 150, 255, 0.15);
+  border-color: rgba(100, 150, 255, 0.4);
+  color: #88b3ff;
+  box-shadow: 0 0 12px rgba(100, 150, 255, 0.1);
+}
+
+.ai-provider-tab.active[data-provider="openai"] {
+  background-color: rgba(16, 163, 127, 0.15);
+  border-color: rgba(16, 163, 127, 0.4);
+  color: #6ee7b7;
+}

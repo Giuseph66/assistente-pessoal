@@ -4,8 +4,8 @@ import { join } from 'path';
 import { homedir } from 'os';
 import { pathToFileURL } from 'url';
 import { existsSync } from 'fs';
-import { getConfigManager } from '@ricky/config';
-import { getLogger } from '@ricky/logger';
+import { getConfigManager } from '@neo/config';
+import { getLogger } from '@neo/logger';
 import { DatabaseManager } from './database';
 import { spawn } from 'child_process';
 import { getOverlayManager } from './overlay';
@@ -19,6 +19,7 @@ export interface ScreenshotOptions {
   mode: ScreenshotMode;
   windowId?: number;
   monitorIndex?: number;
+  displayId?: number;
   region?: {
     x: number;
     y: number;
@@ -101,8 +102,9 @@ export async function captureScreenshot(
 
     const displays = screen.getAllDisplays();
     let targetDisplay = screen.getPrimaryDisplay();
-    if (typeof options.monitorIndex === 'number' && displays[options.monitorIndex]) {
-      targetDisplay = displays[options.monitorIndex];
+    if (typeof options.displayId === 'number') {
+      const matched = displays.find((display) => display.id === options.displayId);
+      if (matched) targetDisplay = matched;
     } else if (options.region) {
       targetDisplay = screen.getDisplayMatching({
         x: options.region.x,
@@ -110,6 +112,8 @@ export async function captureScreenshot(
         width: options.region.width,
         height: options.region.height,
       });
+    } else if (typeof options.monitorIndex === 'number' && displays[options.monitorIndex]) {
+      targetDisplay = displays[options.monitorIndex];
     }
 
     const displayIndex = displays.findIndex((display) => display.id === targetDisplay.id);
@@ -118,7 +122,99 @@ export async function captureScreenshot(
       width: Math.round(targetDisplay.size.width * scaleFactor),
       height: Math.round(targetDisplay.size.height * scaleFactor),
     };
-    
+
+    // Native Linux Capture Bypass to avoid desktopCapturer monitor mixups
+    if (process.platform === 'linux' && (options.mode === 'fullscreen' || options.mode === 'area')) {
+      let captureX = targetDisplay.bounds.x;
+      let captureY = targetDisplay.bounds.y;
+      let captureW = targetDisplay.bounds.width;
+      let captureH = targetDisplay.bounds.height;
+
+      if (options.mode === 'area' && options.region) {
+        captureX = options.region.x;
+        captureY = options.region.y;
+        captureW = options.region.width;
+        captureH = options.region.height;
+      }
+
+      let capturedByNative = false;
+      const savePath = await getScreenshotPath();
+      const format = config.get('screenshots', 'format');
+      const filename = generateFilename(format);
+      const filePath = join(savePath, filename);
+      const tempPath = join(savePath, `screenshot-${Date.now()}-raw.png`);
+
+      if (displayServer === 'wayland' && await commandAvailable('grim')) {
+        const geometry = `${captureX},${captureY} ${captureW}x${captureH}`;
+        const grim = await runCommand('grim', ['-g', geometry, tempPath]);
+        if (grim.code === 0) {
+          capturedByNative = true;
+        } else {
+          logger.warn({ stdout: grim.stdout, stderr: grim.stderr }, 'grim failed, falling back to desktopCapturer');
+        }
+      } else if (displayServer === 'x11' && await commandAvailable('maim')) {
+        const geometry = `${captureW}x${captureH}+${captureX}+${captureY}`;
+        const maim = await runCommand('maim', ['-g', geometry, tempPath]);
+        if (maim.code === 0) {
+          capturedByNative = true;
+        } else {
+          logger.warn({ stdout: maim.stdout, stderr: maim.stderr }, 'maim failed, falling back to desktopCapturer');
+        }
+      }
+
+      if (capturedByNative) {
+        if (format === 'jpg') {
+          const image = nativeImage.createFromPath(tempPath);
+          const quality = config.get('screenshots', 'quality');
+          await writeFile(filePath, image.toJPEG(quality));
+          await unlink(tempPath).catch(() => undefined);
+        } else {
+          await rename(tempPath, filePath).catch(async () => {
+            // Fallback to copy/unlink if cross-device link issues
+            const data = await readFile(tempPath);
+            await writeFile(filePath, data);
+            await unlink(tempPath).catch(() => undefined);
+          });
+        }
+
+        const fileStats = await stat(filePath);
+        if (db) {
+          const screenshotId = db.saveScreenshot({
+            file_path: filePath,
+            file_size: fileStats.size,
+            width: captureW,
+            height: captureH,
+            mode: options.mode,
+            source_app: displayServer,
+            monitor_index: displayIndex >= 0 ? displayIndex : options.monitorIndex,
+            created_at: Date.now(),
+          });
+          logger.info({ filePath, width: captureW, height: captureH, screenshotId }, 'Screenshot saved via native CLI bypass');
+          return {
+            success: true,
+            path: filePath,
+            width: captureW,
+            height: captureH,
+            screenshotId,
+            monitorIndex: displayIndex >= 0 ? displayIndex : options.monitorIndex,
+            displayId: targetDisplay.id,
+            region: options.mode === 'area' ? options.region : undefined,
+          };
+        }
+
+        logger.info({ filePath, width: captureW, height: captureH }, 'Screenshot saved via native CLI bypass');
+        return {
+          success: true,
+          path: filePath,
+          width: captureW,
+          height: captureH,
+          monitorIndex: displayIndex >= 0 ? displayIndex : options.monitorIndex,
+          displayId: targetDisplay.id,
+          region: options.mode === 'area' ? options.region : undefined,
+        };
+      }
+    }
+
     const sources = await desktopCapturer.getSources({
       types: ['screen', 'window'],
       thumbnailSize,
@@ -169,11 +265,11 @@ export async function captureScreenshot(
 
     // Processa e salva com Sharp
     const imgSize = image.getSize();
-    
+
     // Determinar dimensões finais
     let finalWidth: number;
     let finalHeight: number;
-    
+
     if (options.mode === 'area' && options.region) {
       finalWidth = options.region.width;
       finalHeight = options.region.height;
@@ -401,11 +497,11 @@ export async function captureAreaInteractive(db?: DatabaseManager): Promise<Scre
 
     const display = region
       ? screen.getDisplayMatching({
-          x: region.x,
-          y: region.y,
-          width: region.width,
-          height: region.height,
-        })
+        x: region.x,
+        y: region.y,
+        width: region.width,
+        height: region.height,
+      })
       : screen.getPrimaryDisplay();
     const displays = screen.getAllDisplays();
     const monitorIndex = displays.findIndex((item) => item.id === display.id);
@@ -486,7 +582,7 @@ function saveLastCaptureRegion(region: LastCaptureRegion): void {
   config.set('screenshots', 'lastRegion', region);
 }
 
-type ScreenshotSelectorAction = 'single' | 'long' | 'finish' | 'cancel';
+type ScreenshotSelectorAction = 'single' | 'long' | 'finish' | 'cancel' | 'switch-display';
 
 type ScreenshotSelectorResult = {
   token: string;
@@ -685,6 +781,7 @@ async function captureRegionOnce(region: LastCaptureRegion): Promise<ScreenshotR
       height: region.height,
     },
     monitorIndex: region.monitorIndex,
+    displayId: region.displayId,
   });
 }
 
@@ -880,28 +977,40 @@ async function selectScreenshotRegion(
   options?: SelectRegionOptions
 ): Promise<SelectedRegionResult | null> {
   const overlayManager = getOverlayManager();
-  const displays = screen.getAllDisplays();
   const cursor = screen.getCursorScreenPoint();
+  let displays = screen.getAllDisplays();
   let targetDisplay = screen.getDisplayNearestPoint(cursor);
 
-  if (lastRegion?.displayId) {
-    const matched = displays.find((display) => display.id === lastRegion.displayId);
-    if (matched) targetDisplay = matched;
-  } else if (typeof lastRegion?.monitorIndex === 'number' && displays[lastRegion.monitorIndex]) {
-    targetDisplay = displays[lastRegion.monitorIndex];
+  // Em modo travado (captura longa), mantém monitor da sessão.
+  // No modo normal, prioriza monitor sob o cursor para não "saltar" para tela antiga.
+  if (options?.lockSelection) {
+    if (lastRegion?.displayId) {
+      const matched = displays.find((display) => display.id === lastRegion.displayId);
+      if (matched) targetDisplay = matched;
+    } else if (typeof lastRegion?.monitorIndex === 'number' && displays[lastRegion.monitorIndex]) {
+      targetDisplay = displays[lastRegion.monitorIndex];
+    }
   }
 
   overlayManager.showScreenshotSelectorWindow(targetDisplay);
-  const win = overlayManager.getScreenshotSelectorWindow();
+  let win = overlayManager.getScreenshotSelectorWindow();
   if (!win || win.isDestroyed()) {
     return null;
   }
 
-  const displayIndex = displays.findIndex((display) => display.id === targetDisplay.id);
   const token = `selector-${Date.now()}-${Math.floor(Math.random() * 1_000_000)}`;
 
   return new Promise((resolve) => {
     let resolved = false;
+    let isSendingPayload = false;
+
+    const getDisplayIndex = () => {
+      displays = screen.getAllDisplays();
+      const index = displays.findIndex((display) => display.id === targetDisplay.id);
+      return index >= 0 ? index : 0;
+    };
+
+    const canSwitchDisplay = () => displays.length > 1 && !options?.lockSelection;
 
     const cleanup = (result: SelectedRegionResult | null) => {
       if (resolved) return;
@@ -914,9 +1023,68 @@ async function selectScreenshotRegion(
       resolve(result);
     };
 
+    const sendPayload = async () => {
+      if (isSendingPayload) return;
+      isSendingPayload = true;
+      try {
+        if (!win || win.isDestroyed()) {
+          cleanup(null);
+          return;
+        }
+        const longSupport = options?.longCaptureSupported !== undefined
+          ? { supported: options.longCaptureSupported, reason: options.longCaptureReason }
+          : await getLongCaptureSupport();
+        const mode = options?.mode ?? 'initial';
+        if (!win || win.isDestroyed()) {
+          cleanup(null);
+          return;
+        }
+        const displayIndex = getDisplayIndex();
+        win.webContents.send('screenshot-selector:data', {
+          token,
+          displayBounds: targetDisplay.bounds,
+          lastRegion,
+          displayId: targetDisplay.id,
+          monitorIndex: displayIndex,
+          displayCount: displays.length,
+          canSwitchDisplay: canSwitchDisplay(),
+          longCaptureSupported: longSupport.supported,
+          longCaptureReason: longSupport.reason,
+          mode,
+          sessionId: options?.sessionId,
+          lockSelection: options?.lockSelection,
+        });
+      } finally {
+        isSendingPayload = false;
+      }
+    };
+
+    const switchToNextDisplay = () => {
+      if (!canSwitchDisplay()) return;
+      displays = screen.getAllDisplays();
+      if (displays.length < 2) return;
+
+      const currentIndex = getDisplayIndex();
+      const nextDisplay = displays[(currentIndex + 1) % displays.length];
+      targetDisplay = nextDisplay;
+
+      overlayManager.showScreenshotSelectorWindow(targetDisplay);
+      win = overlayManager.getScreenshotSelectorWindow();
+      if (!win || win.isDestroyed()) {
+        cleanup(null);
+        return;
+      }
+      void sendPayload();
+    };
+
     const onResult = (_event: Electron.IpcMainEvent, payload: ScreenshotSelectorResult) => {
       if (payload?.token !== token) return;
+      if (payload.action === 'switch-display') {
+        switchToNextDisplay();
+        return;
+      }
       if ((payload.action === 'single' || payload.action === 'long' || payload.action === 'finish') && payload.region) {
+        const displayIndex = getDisplayIndex();
         cleanup({
           region: {
             x: payload.region.x,
@@ -934,39 +1102,17 @@ async function selectScreenshotRegion(
     };
 
     const onClosed = () => cleanup(null);
+    const initialWin = win;
+    if (!initialWin || initialWin.isDestroyed()) {
+      cleanup(null);
+      return;
+    }
 
     ipcMain.on('screenshot-selector:result', onResult);
-    win.once('closed', onClosed);
+    initialWin.once('closed', onClosed);
 
-    const sendPayload = async () => {
-      if (win.isDestroyed()) {
-        cleanup(null);
-        return;
-      }
-      const longSupport = options?.longCaptureSupported !== undefined
-        ? { supported: options.longCaptureSupported, reason: options.longCaptureReason }
-        : await getLongCaptureSupport();
-      const mode = options?.mode ?? 'initial';
-      if (win.isDestroyed()) {
-        cleanup(null);
-        return;
-      }
-      win.webContents.send('screenshot-selector:data', {
-        token,
-        displayBounds: targetDisplay.bounds,
-        lastRegion,
-        displayId: targetDisplay.id,
-        monitorIndex: displayIndex,
-        longCaptureSupported: longSupport.supported,
-        longCaptureReason: longSupport.reason,
-        mode,
-        sessionId: options?.sessionId,
-        lockSelection: options?.lockSelection,
-      });
-    };
-
-    if (win.webContents.isLoadingMainFrame()) {
-      win.webContents.once('did-finish-load', () => { void sendPayload(); });
+    if (initialWin.webContents.isLoadingMainFrame()) {
+      initialWin.webContents.once('did-finish-load', () => { void sendPayload(); });
     } else {
       void sendPayload();
     }
@@ -1080,6 +1226,7 @@ export async function captureAreaInteractiveConfirmed(db?: DatabaseManager): Pro
           height: selectedRegion.region.height,
         },
         monitorIndex: selectedRegion.region.monitorIndex,
+        displayId: selectedRegion.region.displayId,
       },
       db
     );

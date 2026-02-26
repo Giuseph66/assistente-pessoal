@@ -58,6 +58,7 @@ export function TextHighlightOutput(): JSX.Element {
       case 'gemini':
         return <GeminiIcon size={18} />;
       case 'openai':
+      case 'openai-codex':
         return <OpenAIIcon size={18} />;
       case 'ollama':
         return <OllamaIcon size={18} />;

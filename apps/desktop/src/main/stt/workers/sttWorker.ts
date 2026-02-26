@@ -3,7 +3,7 @@ import { spawn, ChildProcessWithoutNullStreams } from 'child_process';
 import { existsSync } from 'fs';
 import { join, resolve } from 'path';
 import type { Model, Recognizer } from 'vosk';
-import { STTConfig, STTFinalEvent, STTPartialEvent } from '@ricky/shared';
+import { STTConfig, STTFinalEvent, STTPartialEvent } from '@neo/shared';
 
 type Messenger = {
   on: (event: 'message', handler: (message: any) => void) => void;

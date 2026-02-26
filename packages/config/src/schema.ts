@@ -34,7 +34,7 @@ export const AppConfigSchema = z.object({
     presentationMode: z.string().default('CommandOrControl+Alt+P'),
     panicMode: z.string().default('CommandOrControl+Alt+H'), // Botão de pânico
     textHighlight: z.string().default('Ctrl+E'),
-    textHighlightClear: z.string().default('Escape'),
+    textHighlightClear: z.string().default('CommandOrControl+Alt+Escape'),
     // Ctrl+Shift+. (ponto). Usar "." ao invés de "Period" para compatibilidade com accelerator do Electron.
     pasteSttText: z.string().default('CommandOrControl+Shift+.'), // Colar texto STT em app externo
   }),
@@ -80,7 +80,7 @@ export const defaultConfig: AppConfig = {
     presentationMode: 'CommandOrControl+Alt+P',
     panicMode: 'CommandOrControl+Alt+H', // Botão de pânico
     textHighlight: 'Ctrl+E',
-    textHighlightClear: 'Escape',
+    textHighlightClear: 'CommandOrControl+Alt+Escape',
     pasteSttText: 'CommandOrControl+Shift+.', // Colar texto STT em app externo
   },
   stt: {

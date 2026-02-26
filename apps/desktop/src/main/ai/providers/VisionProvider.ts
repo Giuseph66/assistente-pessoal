@@ -1,4 +1,4 @@
-import { ModelInfo, VisionRequest, VisionResponse, ChatRequest, AIProviderId } from '@ricky/shared';
+import { ModelInfo, VisionRequest, VisionResponse, ChatRequest, AIProviderId } from '@neo/shared';
 
 /**
  * Interface base para providers de visão computacional

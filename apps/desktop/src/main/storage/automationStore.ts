@@ -4,7 +4,7 @@ import {
   MappingPoint,
   ImageTemplate,
   Workflow,
-} from '@ricky/shared';
+} from '@neo/shared';
 
 type AutomationStoreState = {
   config: AutomationConfig;

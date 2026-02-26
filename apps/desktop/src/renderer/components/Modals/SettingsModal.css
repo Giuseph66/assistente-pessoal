@@ -12,10 +12,12 @@
     justify-content: center;
     animation: fadeIn var(--transition-fast);
 }
+
 .modal-footer-buttons {
     display: flex;
     gap: 8px;
 }
+
 .modal-window {
     width: 860px;
     height: 640px;
@@ -27,6 +29,16 @@
     overflow: hidden;
     box-shadow: 0 30px 60px -12px rgba(0, 0, 0, 0.9);
     animation: scaleIn var(--transition-fast);
+}
+
+@media (max-width: 1200px) {
+    .notifications-settings-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .notifications-filters-grid {
+        grid-template-columns: 1fr 1fr;
+    }
 }
 
 /* Header */
@@ -78,6 +90,12 @@
     padding: 16px 8px;
     display: flex;
     flex-direction: column;
+    transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.modal-sidebar.sidebar-minimized {
+    width: 64px;
+    padding: 16px 8px;
 }
 
 .sidebar-nav {
@@ -101,6 +119,18 @@
     cursor: pointer;
     transition: all var(--transition-fast);
     -webkit-app-region: no-drag;
+    white-space: nowrap;
+    overflow: hidden;
+}
+
+.sidebar-minimized .sidebar-item {
+    justify-content: center;
+    padding: 10px 0;
+    gap: 0;
+}
+
+.sidebar-minimized .sidebar-item span {
+    display: none;
 }
 
 .sidebar-item:hover {
@@ -120,6 +150,38 @@
 
 .sidebar-item.active svg {
     color: #4f46e5;
+}
+
+.sidebar-footer {
+    margin-top: auto;
+    display: flex;
+    justify-content: center;
+    padding-top: 16px;
+    border-top: 1px solid #111111;
+}
+
+.sidebar-toggle-btn {
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
+    background: transparent;
+    border: none;
+    color: #444;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.sidebar-toggle-btn:hover {
+    background: #111111;
+    color: #fff;
+}
+
+.sidebar-minimized .sidebar-footer {
+    padding-left: 0;
+    padding-right: 0;
 }
 
 /* Content */
@@ -601,6 +663,91 @@
     font-size: 14px;
     font-weight: 600;
     color: #ffffff;
+}
+
+/* OpenAI Auth Flow Redesign */
+.openai-auth-flow {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    padding: 16px;
+    background: rgba(16, 163, 127, 0.03);
+    border-radius: 16px;
+    border: 1px solid rgba(16, 163, 127, 0.1);
+}
+
+.auth-method-tab-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+}
+
+.recommended-method {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.recommended-tag {
+    font-size: 10px;
+    font-weight: 800;
+    color: #10a37f;
+    text-transform: uppercase;
+    background: rgba(16, 163, 127, 0.1);
+    padding: 2px 8px;
+    border-radius: 20px;
+    width: fit-content;
+    border: 1px solid rgba(16, 163, 127, 0.2);
+    margin-bottom: 4px;
+}
+
+.recommended-method h5 {
+    margin: 0;
+    font-size: 16px;
+    color: #fff;
+    font-weight: 600;
+}
+
+.recommended-method p {
+    margin: 0;
+    font-size: 12px;
+    color: #888;
+}
+
+.auth-separator {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin: 8px 0;
+}
+
+.auth-separator span {
+    font-size: 10px;
+    font-weight: 800;
+    color: #444;
+    white-space: nowrap;
+}
+
+.auth-separator::before,
+.auth-separator::after {
+    content: "";
+    flex: 1;
+    height: 1px;
+    background: rgba(255, 255, 255, 0.05);
+}
+
+.api-key-manual-section {
+    display: flex;
+    gap: 16px;
+    align-items: flex-end;
+    padding: 16px;
+    background: rgba(0, 0, 0, 0.2);
+    border-radius: 12px;
+    border: 1px solid rgba(255, 255, 255, 0.03);
+}
+
+.oauth-embed-container {
+    padding: 8px 0;
 }
 
 .get-key-link-premium {
@@ -1945,9 +2092,12 @@
 }
 
 @keyframes permission-pulse {
-    0%, 100% {
+
+    0%,
+    100% {
         opacity: 0.4;
     }
+
     50% {
         opacity: 1;
     }
@@ -2080,6 +2230,7 @@
     from {
         opacity: 0;
     }
+
     to {
         opacity: 1;
     }
@@ -2090,6 +2241,7 @@
         opacity: 0;
         transform: translateY(20px) scale(0.95);
     }
+
     to {
         opacity: 1;
         transform: translateY(0) scale(1);

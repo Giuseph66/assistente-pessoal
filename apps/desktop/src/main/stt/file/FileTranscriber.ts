@@ -5,8 +5,8 @@ import { join, parse } from 'path';
 import { mkdir, writeFile } from 'fs/promises';
 import { app } from 'electron';
 import { is } from '@electron-toolkit/utils';
-import { SubtitleSegment, TranscribeProgress } from '@ricky/shared';
-import { getLogger } from '@ricky/logger';
+import { SubtitleSegment, TranscribeProgress } from '@neo/shared';
+import { getLogger } from '@neo/logger';
 import { segmentWords } from './SubtitleSegmenter';
 import { segmentsToSrt, segmentsToVtt } from './subtitleFormats';
 

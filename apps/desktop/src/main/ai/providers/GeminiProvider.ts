@@ -1,6 +1,6 @@
 import { BaseVisionProvider } from './BaseProvider';
-import { VisionRequest, VisionResponse, ChatRequest, ModelInfo, AIProviderId } from '@ricky/shared';
-import { getLogger } from '@ricky/logger';
+import { VisionRequest, VisionResponse, ChatRequest, ModelInfo, AIProviderId } from '@neo/shared';
+import { getLogger } from '@neo/logger';
 import { getModelsForProvider } from '../modelCatalog';
 
 const logger = getLogger();

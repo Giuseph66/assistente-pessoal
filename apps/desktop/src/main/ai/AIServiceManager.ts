@@ -1,7 +1,7 @@
 import { DatabaseManager } from '../database';
 import { KeyStorage } from './storage/KeyStorage';
 import { AIService } from './AIService';
-import { AIConfig } from '@ricky/shared';
+import { AIConfig } from '@neo/shared';
 import { getAIConfigStore } from '../storage/aiConfigStore';
 import { normalizeAIConfigPatch } from './utils/aiConfigNormalization';
 

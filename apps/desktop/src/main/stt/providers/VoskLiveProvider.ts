@@ -1,5 +1,5 @@
 import { EventEmitter } from 'events';
-import { STTFinalEvent, STTPartialEvent, STTStatus } from '@ricky/shared';
+import { STTFinalEvent, STTPartialEvent, STTStatus } from '@neo/shared';
 import { VoskProvider } from './VoskProvider';
 import type {
   LiveTranscriptionError,

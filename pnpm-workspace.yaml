@@ -5,6 +5,12 @@ packages:
 
 ignoredBuiltDependencies:
   - electron
+  - ffi-napi
+  - lzma-native
+  - ref-napi
 
 onlyBuiltDependencies:
+  - better-sqlite3
+  - esbuild
+  - sharp
   - tesseract.js

@@ -1,4 +1,5 @@
 import { Handle, Position } from '@xyflow/react';
+import { FlowIcon } from '../FlowIcons';
 
 export function LoopNode({ data }: { data: any }) {
   const isCount = data.data.mode === 'count';
@@ -10,7 +11,9 @@ export function LoopNode({ data }: { data: any }) {
       <Handle type="target" position={Position.Left} />
 
       <div className="node-header">
-        <div className="node-icon" style={{ color: '#8b5cf6' }}>🔁</div>
+        <div className="node-icon" style={{ color: '#8b5cf6' }}>
+          <FlowIcon name="repeat" size={15} />
+        </div>
         <div className="node-title-container" style={{ flex: 1, overflow: 'hidden' }}>
           <div className="node-type">LÓGICA</div>
           <div className="node-title">Loop</div>
@@ -51,4 +54,3 @@ export function LoopNode({ data }: { data: any }) {
     </div>
   );
 }
-

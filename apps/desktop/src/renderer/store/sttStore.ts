@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from 'react';
-import { STTFinalEvent, STTPartialEvent, STTStatus } from '@ricky/shared';
+import { STTFinalEvent, STTPartialEvent, STTStatus } from '@neo/shared';
 
 export type SttState = {
   status: STTStatus;

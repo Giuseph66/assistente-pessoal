@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { RecordingEntry, TranscribeProgress } from '@ricky/shared';
+import { RecordingEntry, TranscribeProgress } from '@neo/shared';
 
 type Props = {
   recordings: RecordingEntry[];

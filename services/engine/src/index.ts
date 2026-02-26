@@ -8,7 +8,7 @@
  */
 
 import { createServer } from './server.js';
-import { getLogger } from '@ricky/logger';
+import { getLogger } from '@neo/logger';
 
 const logger = getLogger({ appName: 'ricky-engine' });
 

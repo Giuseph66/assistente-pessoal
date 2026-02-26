@@ -278,6 +278,27 @@ const permissionsApi = {
     openSystemSettings: () => ipcRenderer.invoke('permissions:openSystemSettings'),
 }
 
+const notificationsApi = {
+    list: (filters?: any) => ipcRenderer.invoke('notifications:list', filters || {}),
+    get: (id: string) => ipcRenderer.invoke('notifications:get', id),
+    clear: (payload?: { days?: number; from?: number; to?: number }) => ipcRenderer.invoke('notifications:clear', payload || {}),
+    delete: (id: string) => ipcRenderer.invoke('notifications:delete', id),
+    export: (format: 'json' | 'csv', filters?: any) => ipcRenderer.invoke('notifications:export', { format, filters: filters || {} }),
+    getSettings: () => ipcRenderer.invoke('notifications:settings:get'),
+    setSettings: (patch: any) => ipcRenderer.invoke('notifications:settings:set', patch || {}),
+    notify: (payload: any) => ipcRenderer.invoke('notifications:notify', payload || {}),
+    onUpdated: (cb: (payload: any) => void) => {
+        const listener = (_event: any, payload: any) => cb(payload)
+        ipcRenderer.on('notifications:updated', listener)
+        return () => ipcRenderer.removeListener('notifications:updated', listener)
+    },
+    onSettingsUpdated: (cb: (payload: any) => void) => {
+        const listener = (_event: any, payload: any) => cb(payload)
+        ipcRenderer.on('notifications:settings:updated', listener)
+        return () => ipcRenderer.removeListener('notifications:settings:updated', listener)
+    },
+}
+
 const automationApi = {
     getConfig: () => ipcRenderer.invoke('automation.getConfig'),
     saveConfig: (config: any) => ipcRenderer.invoke('automation.saveConfig', config),
@@ -412,6 +433,25 @@ const automationApi = {
     },
 }
 
+const authApi = {
+    loginOpenAI: (profileId?: string, label?: string) => ipcRenderer.invoke('auth:login-openai', profileId, label),
+    finishLoginManual: (profileId: string, codeOrUrl: string, label?: string) => ipcRenderer.invoke('auth:finish-login-manual', profileId, codeOrUrl, label),
+    cancelLogin: (profileId: string) => ipcRenderer.invoke('auth:cancel-login', profileId),
+    logout: (profileId: string) => ipcRenderer.invoke('auth:logout', profileId),
+    getAccessToken: (profileId?: string) => ipcRenderer.invoke('auth:get-access-token', profileId),
+    getProfiles: () => ipcRenderer.invoke('auth:get-profiles'),
+    setActiveProfile: (profileId: string) => ipcRenderer.invoke('auth:set-active-profile', profileId),
+    setProfileEnabled: (profileId: string, isEnabled: boolean) => ipcRenderer.invoke('auth:set-profile-enabled', profileId, isEnabled),
+    getStatus: (profileId?: string) => ipcRenderer.invoke('auth:get-status', profileId),
+    getConfig: () => ipcRenderer.invoke('auth:get-config'),
+    updateConfig: (patch: any) => ipcRenderer.invoke('auth:update-config', patch),
+    onStatusChanged: (cb: (event: any) => void) => {
+        const listener = (_event: any, payload: any) => cb(payload)
+        ipcRenderer.on('auth:status-changed', listener)
+        return () => ipcRenderer.removeListener('auth:status-changed', listener)
+    },
+}
+
 // Use `contextBridge` APIs to expose Electron APIs to
 // renderer only if context isolation is enabled, otherwise
 // just add to the DOM global.
@@ -430,7 +470,9 @@ if (process.contextIsolated) {
         contextBridge.exposeInMainWorld('textHighlightAPI', textHighlightApi)
         contextBridge.exposeInMainWorld('ai', aiApi)
         contextBridge.exposeInMainWorld('permissions', permissionsApi)
+        contextBridge.exposeInMainWorld('notifications', notificationsApi)
         contextBridge.exposeInMainWorld('automation', automationApi)
+        contextBridge.exposeInMainWorld('auth', authApi)
     } catch (error) {
         console.error(error)
     }
@@ -462,5 +504,9 @@ if (process.contextIsolated) {
     // @ts-ignore (define in dts)
     window.permissions = permissionsApi
     // @ts-ignore (define in dts)
+    window.notifications = notificationsApi
+    // @ts-ignore (define in dts)
     window.automation = automationApi
+    // @ts-ignore (define in dts)
+    window.auth = authApi
 }

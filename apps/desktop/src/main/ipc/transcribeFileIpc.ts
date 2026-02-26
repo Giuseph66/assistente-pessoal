@@ -4,7 +4,7 @@ import { existsSync } from 'fs';
 import { FileTranscriber } from '../stt/file/FileTranscriber';
 import { DatabaseManager } from '../database';
 import { ModelManager } from '../stt/models/ModelManager';
-import { SubtitleSegment, TranscribeFileRequest } from '@ricky/shared';
+import { SubtitleSegment, TranscribeFileRequest } from '@neo/shared';
 import { segmentsToSrt, segmentsToVtt } from '../stt/file/subtitleFormats';
 import { mkdir, writeFile } from 'fs/promises';
 

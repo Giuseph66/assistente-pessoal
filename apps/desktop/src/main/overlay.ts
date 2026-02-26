@@ -1,8 +1,8 @@
 import { BrowserWindow, screen } from 'electron';
 import { join } from 'path';
 import { is } from '@electron-toolkit/utils';
-import { getConfigManager } from '@ricky/config';
-import { getLogger } from '@ricky/logger';
+import { getConfigManager } from '@neo/config';
+import { getLogger } from '@neo/logger';
 
 const logger = getLogger();
 const config = getConfigManager();
@@ -961,8 +961,14 @@ export class OverlayManager {
   showScreenshotSelectorWindow(display?: Electron.Display): void {
     const targetDisplay = display || screen.getPrimaryDisplay();
     if (this.screenshotSelectorWindow && !this.screenshotSelectorWindow.isDestroyed()) {
-      this.screenshotSelectorWindow.setBounds(targetDisplay.bounds, true);
-      this.screenshotSelectorWindow.show();
+      if (process.platform === 'linux') {
+        this.screenshotSelectorWindow.hide();
+        this.screenshotSelectorWindow.setBounds(targetDisplay.bounds, true);
+        this.screenshotSelectorWindow.show();
+      } else {
+        this.screenshotSelectorWindow.setBounds(targetDisplay.bounds, true);
+        this.screenshotSelectorWindow.show();
+      }
       this.screenshotSelectorWindow.focus();
       return;
     }
@@ -1605,15 +1611,16 @@ export class OverlayManager {
   }
 
   /**
-   * Ativa o portal da janela vintage por 3 segundos
+   * Clique direito no HUD entra direto no Modo Mini.
    */
   handleHUDRightClick(): void {
-    logger.info('HUD: clique direito detectado, portal ativado!');
+    logger.info('HUD: clique direito detectado, ativando Modo Mini imediatamente');
 
-    // Força reset
+    // Garante que qualquer estado do portal antigo seja limpo.
     this.isVintagePortalActive = false;
     if (this.vintagePortalTimeout) {
       clearTimeout(this.vintagePortalTimeout);
+      this.vintagePortalTimeout = null;
     }
 
     // Limpa timer de mouse sobre portal
@@ -1623,21 +1630,8 @@ export class OverlayManager {
       this.mouseOverPortalTimeout = null;
     }
 
-    const hudBounds = this.hudWindow?.getBounds();
-    if (hudBounds) {
-      // Mostra a janela vintage em posição aleatória (sem passar coordenadas)
-      this.showVintageWindow();
-    }
-
-    this.isVintagePortalActive = true;
-
-    this.vintagePortalTimeout = setTimeout(() => {
-      if (this.isVintagePortalActive) {
-        this.isVintagePortalActive = false;
-        this.hideVintageWindow();
-        logger.info('Portal fechado: Tempo esgotado.');
-      }
-    }, 5000);
+    this.hideVintageWindow();
+    this.enterMiniMode();
   }
 
   /**

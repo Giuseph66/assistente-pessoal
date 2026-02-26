@@ -46,9 +46,10 @@
     flex: 1;
     width: 100%;
     height: 100%;
-    /* Dot pattern background */
-    background-image: radial-gradient(rgba(255, 255, 255, 0.1) 1px, transparent 1px);
-    background-size: 20px 20px;
+    background:
+        radial-gradient(circle at 15% 20%, rgba(59, 130, 246, 0.08), transparent 35%),
+        radial-gradient(circle at 85% 80%, rgba(99, 102, 241, 0.08), transparent 40%),
+        #0b1220;
 }
 
 /* Glassmorphic Panels */
@@ -121,14 +122,14 @@
     position: absolute;
     top: 90px;
     left: 24px;
-    width: 260px;
-    max-height: calc(100vh - 120px);
+    width: 224px;
+    max-height: min(540px, calc(100vh - 210px));
     overflow-y: auto;
     z-index: 10;
     display: flex;
     flex-direction: column;
-    gap: 20px;
-    padding: 20px;
+    gap: 14px;
+    padding: 16px;
 }
 
 .palette-category {
@@ -148,7 +149,7 @@
 .palette-item {
     background: rgba(255, 255, 255, 0.03);
     border: 1px solid transparent;
-    padding: 12px;
+    padding: 9px 10px;
     border-radius: 12px;
     cursor: grab;
     margin-bottom: 8px;
@@ -221,6 +222,11 @@
 .workflow-node.running {
     border-color: #10b981;
     box-shadow: 0 0 0 2px #10b981, 0 0 20px rgba(16, 185, 129, 0.3);
+}
+
+.workflow-node.ai-brain-node {
+    border-color: rgba(96, 165, 250, 0.35);
+    box-shadow: 0 4px 20px rgba(37, 99, 235, 0.2);
 }
 
 .node-header {
@@ -296,6 +302,42 @@
     padding: 0;
 }
 
+.react-flow__background path {
+    shape-rendering: geometricPrecision;
+}
+
+.react-flow__edge-path {
+    stroke: #60a5fa;
+    stroke-width: 2.2;
+    opacity: 0.95;
+    transition: stroke 0.2s ease, stroke-width 0.2s ease, opacity 0.2s ease;
+}
+
+.react-flow__edge:hover .react-flow__edge-path {
+    stroke: #93c5fd;
+    stroke-width: 2.8;
+}
+
+.react-flow__edge.selected .react-flow__edge-path {
+    stroke: #bfdbfe;
+    stroke-width: 3;
+}
+
+.react-flow__connection-path {
+    stroke: #93c5fd;
+    stroke-width: 2.4;
+    stroke-opacity: 0.95;
+}
+
+.react-flow__edge-interaction {
+    stroke-width: 24;
+}
+
+.edgebutton:hover {
+    background: rgba(248, 113, 113, 0.96) !important;
+    transform: scale(1.06);
+}
+
 .react-flow__handle {
     width: 10px;
     height: 10px;
@@ -364,6 +406,119 @@
 .workflow-palette::-webkit-scrollbar-thumb:hover,
 .workflow-properties::-webkit-scrollbar-thumb:hover {
     background: rgba(255, 255, 255, 0.2);
+}
+
+.workflow-agent-panel {
+    position: absolute;
+    top: 90px;
+    right: 360px;
+    width: 360px;
+    max-height: calc(100vh - 130px);
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    z-index: 11;
+}
+
+.workflow-agent-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+}
+
+.workflow-agent-title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+}
+
+.workflow-agent-messages {
+    min-height: 180px;
+    max-height: 320px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding-right: 4px;
+}
+
+.workflow-agent-message {
+    padding: 10px 12px;
+    border-radius: 10px;
+    font-size: 12px;
+    line-height: 1.45;
+    white-space: pre-wrap;
+}
+
+.workflow-agent-message-user {
+    background: rgba(96, 165, 250, 0.16);
+    border: 1px solid rgba(96, 165, 250, 0.32);
+    align-self: flex-end;
+    max-width: 92%;
+}
+
+.workflow-agent-message-assistant {
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    align-self: flex-start;
+    max-width: 96%;
+}
+
+.workflow-agent-proposal {
+    background: rgba(16, 185, 129, 0.08);
+    border: 1px solid rgba(16, 185, 129, 0.2);
+    border-radius: 10px;
+    padding: 10px;
+}
+
+.workflow-agent-proposal-title {
+    font-size: 12px;
+    color: #a7f3d0;
+    margin-bottom: 8px;
+}
+
+.workflow-agent-proposal-actions {
+    display: flex;
+    gap: 8px;
+}
+
+.workflow-agent-input {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.workflow-agent-panel .workflow-input {
+    min-height: 86px;
+    resize: vertical;
+}
+
+.workflow-agent-messages::-webkit-scrollbar {
+    width: 4px;
+}
+
+.workflow-agent-messages::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.workflow-agent-messages::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.15);
+    border-radius: 4px;
+}
+
+@media (max-width: 1360px) {
+    .workflow-agent-panel {
+        right: 24px;
+        top: auto;
+        bottom: 110px;
+        width: 420px;
+        max-width: calc(100vw - 48px);
+        max-height: 420px;
+    }
 }
 
 /* Property Inputs & Selects */

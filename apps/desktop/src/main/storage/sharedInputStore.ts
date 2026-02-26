@@ -5,7 +5,7 @@
  * Usado para o atalho de "colar texto STT" em aplicações externas.
  */
 
-import { getLogger } from '@ricky/logger';
+import { getLogger } from '@neo/logger';
 
 const logger = getLogger();
 

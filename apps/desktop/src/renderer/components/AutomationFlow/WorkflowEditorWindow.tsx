@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { WorkflowGraph } from '@ricky/shared';
+import { WorkflowGraph } from '@neo/shared';
 import { WorkflowEditor } from './WorkflowEditor';
 
 export function WorkflowEditorWindow() {

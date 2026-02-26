@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { TranslationResult, TranslationStartOptions, TranslationStatus } from '@ricky/shared';
+import { TranslationResult, TranslationStartOptions, TranslationStatus } from '@neo/shared';
 
 export function TranslationOverlayRoot(): JSX.Element {
   const [status, setStatus] = useState<TranslationStatus>({ stage: 'idle' });

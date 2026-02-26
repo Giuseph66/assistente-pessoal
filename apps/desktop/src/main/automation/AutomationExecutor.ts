@@ -1,5 +1,5 @@
 import { EventEmitter } from 'events';
-import { getLogger } from '@ricky/logger';
+import { getLogger } from '@neo/logger';
 import { getAutomationStore } from '../storage/automationStore';
 import { getAutomationService } from './AutomationService';
 import { getMappingService } from './MappingService';
@@ -20,7 +20,7 @@ import {
   DragAction,
   LoopAction,
   ConditionAction,
-} from '@ricky/shared';
+} from '@neo/shared';
 
 const logger = getLogger();
 

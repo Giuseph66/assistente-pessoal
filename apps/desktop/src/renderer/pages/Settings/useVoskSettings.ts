@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from 'react';
-import { InstalledModel, ModelDescriptor, STTConfig, STTStatus } from '@ricky/shared';
+import { InstalledModel, ModelDescriptor, STTConfig, STTStatus } from '@neo/shared';
 
 const defaultStatus: STTStatus = { state: 'idle' };
 

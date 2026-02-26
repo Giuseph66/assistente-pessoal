@@ -2,10 +2,10 @@ import { EventEmitter } from 'events';
 import { writeFile, mkdir } from 'fs/promises';
 import { join } from 'path';
 import { app, globalShortcut, nativeImage } from 'electron';
-import { getLogger } from '@ricky/logger';
+import { getLogger } from '@neo/logger';
 import { getAutomationStore } from '../storage/automationStore';
 import { getAutomationService } from './AutomationService';
-import { MappingPoint, ImageTemplate, MappingPointType } from '@ricky/shared';
+import { MappingPoint, ImageTemplate, MappingPointType } from '@neo/shared';
 import { captureAreaInteractiveConfirmed } from '../screenshot';
 import { DatabaseManager } from '../database';
 

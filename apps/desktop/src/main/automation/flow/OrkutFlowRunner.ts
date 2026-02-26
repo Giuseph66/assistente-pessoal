@@ -1,16 +1,18 @@
 import { EventEmitter } from 'events';
-import { getLogger } from '@ricky/logger';
+import { getLogger } from '@neo/logger';
 import {
   WorkflowGraph,
   FlowNode,
   FlowExecutionStatus,
   FlowExecutionLog,
   FlowExecutionState,
-  FlowNodeType,
-} from '@ricky/shared';
+  AIBrainData,
+} from '@neo/shared';
 import { getAutomationService } from '../AutomationService';
 import { getMappingService } from '../MappingService';
 import { OrkutFlowCompiler, CompiledGraph } from './OrkutFlowCompiler';
+import { DatabaseManager } from '../../database';
+import { FlowBrainExecutor } from './FlowBrainExecutor';
 
 const logger = getLogger();
 
@@ -39,6 +41,12 @@ export class OrkutFlowRunner extends EventEmitter {
   private automationService = getAutomationService();
   private mappingService = getMappingService();
   private compiler = new OrkutFlowCompiler();
+  private brainExecutor: FlowBrainExecutor;
+
+  constructor(private readonly db: DatabaseManager) {
+    super();
+    this.brainExecutor = new FlowBrainExecutor(db);
+  }
 
   async run(workflow: WorkflowGraph): Promise<void> {
     if (this.status === 'running' || this.status === 'paused') {
@@ -346,9 +354,97 @@ export class OrkutFlowRunner extends EventEmitter {
         return 'DONE';
       }
 
+      case 'ai.brain': {
+        const d = data as AIBrainData;
+        this.addLog('info', `Nó IA iniciado (modo: ${d.inputMode || 'hybrid'})`);
+
+        try {
+          const nodeNeighborhood = this.buildNodeNeighborhood(node.id);
+          const result = await this.brainExecutor.executeNode(node, {
+            workflowId: this.currentWorkflow?.id || '',
+            workflowName: this.currentWorkflow?.name || '',
+            runId: this.runId || '',
+            nodeId: node.id,
+            nodeNeighborhood,
+            lastFoundImage: this.lastFoundImage,
+          });
+
+          this.addLog(
+            'info',
+            `Nó IA finalizado com rota "${result.route}" (${result.toolCallsExecuted} tool-calls em ${result.turns} ciclos).`
+          );
+          if (result.message) {
+            this.addLog('info', `IA: ${result.message}`);
+          }
+          return result.route || 'ERROR';
+        } catch (error: any) {
+          this.addLog('error', `Falha no nó IA. Seguindo por ERROR. (${error?.message || 'erro desconhecido'})`);
+          logger.error({ err: error, nodeId: node.id, runId: this.runId }, 'ai.brain execution failed');
+          return 'ERROR';
+        }
+      }
+
       default:
         throw new Error(`Tipo de nó não suportado: ${nodeType}`);
     }
+  }
+
+  private buildNodeNeighborhood(nodeId: string): {
+    incoming: Array<{
+      sourceHandle: string;
+      sourceNodeId: string;
+      sourceNodeType: string;
+      sourceConfigPreview: Record<string, unknown>;
+    }>;
+    outgoing: Array<{
+      route: string;
+      targetNodeId: string;
+      targetNodeType: string;
+      targetConfigPreview: Record<string, unknown>;
+    }>;
+  } | null {
+    if (!this.currentWorkflow) return null;
+
+    const nodeById = new Map(this.currentWorkflow.nodes.map((node) => [node.id, node]));
+    const summarizeConfig = (data: unknown): Record<string, unknown> => {
+      if (!data || typeof data !== 'object' || Array.isArray(data)) return {};
+      const entries = Object.entries(data as Record<string, unknown>).slice(0, 8);
+      const output: Record<string, unknown> = {};
+      entries.forEach(([key, value]) => {
+        if (typeof value === 'string' && value.length > 120) {
+          output[key] = `${value.slice(0, 120)}...[truncated]`;
+          return;
+        }
+        output[key] = value;
+      });
+      return output;
+    };
+
+    const incoming = this.currentWorkflow.edges
+      .filter((edge) => edge.target === nodeId)
+      .map((edge) => {
+        const sourceNode = nodeById.get(edge.source);
+        return {
+          sourceHandle: edge.sourceHandle || 'OUT',
+          sourceNodeId: edge.source,
+          sourceNodeType: String(sourceNode?.data?.nodeType || sourceNode?.type || 'unknown'),
+          sourceConfigPreview: summarizeConfig(sourceNode?.data?.data || {}),
+        };
+      });
+
+    const outgoing = this.currentWorkflow.edges
+      .filter((edge) => edge.source === nodeId)
+      .map((edge) => {
+        const targetNode = nodeById.get(edge.target);
+        return {
+          route: edge.sourceHandle || 'OUT',
+          targetNodeId: edge.target,
+          targetNodeType: String(targetNode?.data?.nodeType || targetNode?.type || 'unknown'),
+          targetConfigPreview: summarizeConfig(targetNode?.data?.data || {}),
+        };
+      });
+
+    return { incoming, outgoing };
   }
 
   private addLog(level: FlowExecutionLog['level'], message: string) {
@@ -427,9 +523,12 @@ export class OrkutFlowRunner extends EventEmitter {
 
 let orkutFlowRunner: OrkutFlowRunner | null = null;
 
-export function getOrkutFlowRunner(): OrkutFlowRunner {
+export function getOrkutFlowRunner(db?: DatabaseManager): OrkutFlowRunner {
   if (!orkutFlowRunner) {
-    orkutFlowRunner = new OrkutFlowRunner();
+    if (!db) {
+      throw new Error('DatabaseManager é obrigatório na primeira inicialização do OrkutFlowRunner.');
+    }
+    orkutFlowRunner = new OrkutFlowRunner(db);
   }
   return orkutFlowRunner;
 }

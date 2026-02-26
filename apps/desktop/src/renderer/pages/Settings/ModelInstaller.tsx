@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { InstalledModel, ModelDescriptor } from '@ricky/shared';
+import { InstalledModel, ModelDescriptor } from '@neo/shared';
 
 type Props = {
   catalog: ModelDescriptor[];

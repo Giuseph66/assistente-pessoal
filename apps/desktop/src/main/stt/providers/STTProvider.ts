@@ -1,4 +1,4 @@
-import { STTConfig, STTFinalEvent, STTPartialEvent, STTStatus } from '@ricky/shared';
+import { STTConfig, STTFinalEvent, STTPartialEvent, STTStatus } from '@neo/shared';
 
 export interface STTProvider {
   start(config: STTConfig, modelPath: string): Promise<void>;

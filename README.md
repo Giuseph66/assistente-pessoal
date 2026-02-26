@@ -141,6 +141,37 @@ As configurações são salvas em `~/.config/ricky-assistente-pessoal/config.jso
 - **STT**: provider, idioma, caminho do modelo
 - **Screenshots**: caminho de salvamento, formato, qualidade
 
+## 🔔 Central de Notificações
+
+### Como funciona
+- O app possui uma seção **Configurações > Notificações** com histórico paginado, busca, filtros e detalhes.
+- Toda notificação criada pelo próprio app pode ser registrada no histórico local (toggle ligado por padrão).
+- Captura de notificações do sistema é **opt-in** (desligada por padrão) e inclui aviso de privacidade.
+
+### Persistência local
+- Banco dedicado: `app.getPath("userData")/notifications.sqlite`
+- Tabela principal: `notifications` (com índices por `createdAt`, `source`, `appName`, `level`)
+- Configurações: `notification_settings` no mesmo banco.
+
+### Exportação e limpeza
+- Exporta histórico em **JSON** ou **CSV** via seletor de arquivo.
+- Permite limpar todo o histórico ou remover dados mais antigos conforme retenção (7/30/90 dias).
+
+### Limitações por sistema operacional
+- **macOS**: captura de notificações de outros apps não suportada (apenas notificações do próprio app).
+- **Linux**: captura experimental via `dbus-monitor` (pode não funcionar em todos os ambientes/permissões).
+- **Windows**: integração com Notification Listener marcada como planejada (feature flag).
+
+### Desativar e limpar
+1. Abra **Configurações > Notificações**.
+2. Desative a captura do sistema e/ou histórico do app.
+3. Use **Limpar tudo** para apagar o histórico local.
+
+### Referências
+- Electron Notifications: https://www.electronjs.org/docs/latest/tutorial/notifications
+- Windows Notification Listener (UserNotificationListener): https://learn.microsoft.com/windows/apps/develop/notifications/app-notifications/notification-listener
+- Desktop Notifications spec (Linux / freedesktop): https://specifications.freedesktop.org/notification-spec/latest/
+
 ## 🎙️ Transcrição Offline (Vosk)
 
 ### Visão Geral
@@ -206,7 +237,8 @@ pip install argostranslate
 
 ### Scripts Disponíveis
 
-- `pnpm dev` - Inicia app em modo desenvolvimento
+- `pnpm dev` - Inicia app em modo desenvolvimento (Atenção: este comando recompila as dependências nativas, o que demora bastante)
+- `pnpm --filter neo-desktop preview` - **Alternativa muito mais rápida:** Inicia o app compilado sem recompilar dependências nativas. Você também pode navegar até `apps/desktop` e rodar `npm run preview`.
 - `pnpm build` - Build de produção
 - `pnpm typecheck` - Verificação de tipos
 - `pnpm build:engine` - Build do engine STT
@@ -214,10 +246,10 @@ pip install argostranslate
 
 ### Estrutura de Packages
 
-- `@ricky/shared` - Tipos e constantes compartilhadas
-- `@ricky/config` - Sistema de configuração
-- `@ricky/logger` - Logger estruturado
-- `@ricky/engine` - Engine STT (subprocesso)
+- `@neo/shared` - Tipos e constantes compartilhadas
+- `@neo/config` - Sistema de configuração
+- `@neo/logger` - Logger estruturado
+- `@neo/engine` - Engine STT (subprocesso)
 
 ## 🎯 Próximos Passos
 

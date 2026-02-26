@@ -126,6 +126,10 @@ export const ShortcutsSection: React.FC = () => {
                     </div>
                     <div className="shortcut-actions">
                         <div className="shortcut-display">
+                            <span className="key">Ctrl</span>
+                            <span className="plus">+</span>
+                            <span className="key">Alt</span>
+                            <span className="plus">+</span>
                             <span className="key">Escape</span>
                         </div>
                         <button className="btn-change">Change</button>
@@ -135,4 +139,3 @@ export const ShortcutsSection: React.FC = () => {
         </div>
     );
 };
-

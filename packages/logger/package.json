@@ -1,5 +1,5 @@
 {
-  "name": "@ricky/logger",
+  "name": "@neo/logger",
   "version": "0.0.1",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -17,4 +17,3 @@
     "typescript": "^5.3.3"
   }
 }
-

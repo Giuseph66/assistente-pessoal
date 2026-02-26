@@ -1,4 +1,4 @@
-import { SubtitleSegment } from '@ricky/shared';
+import { SubtitleSegment } from '@neo/shared';
 
 type WordInfo = {
   word: string;

@@ -1,7 +1,7 @@
 import { EventEmitter } from 'events';
 import { WebSocket } from 'ws';
-import { getLogger } from '@ricky/logger';
-import type { STTFinalEvent, STTPartialEvent, STTStatus } from '@ricky/shared';
+import { getLogger } from '@neo/logger';
+import type { STTFinalEvent, STTPartialEvent, STTStatus } from '@neo/shared';
 import type {
   LiveTranscriptionError,
   LiveTranscriptionProvider,

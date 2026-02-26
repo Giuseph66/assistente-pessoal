@@ -6,7 +6,7 @@ import {
   AutomationActionType,
   MappingPoint,
   ImageTemplate,
-} from '@ricky/shared';
+} from '@neo/shared';
 import './WorkflowEditor.css';
 import { CustomSelect } from '../Modals/SettingsSections/CustomSelect';
 

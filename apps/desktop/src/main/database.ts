@@ -14,7 +14,7 @@ import {
   AIMessage,
   AIRun,
   PromptTemplate,
-} from '@ricky/shared';
+} from '@neo/shared';
 import { Migrator } from './database/migrator';
 
 export interface AISessionRecord {

@@ -1,7 +1,7 @@
 import { nativeImage } from 'electron';
 import { extname } from 'path';
 import { readFile } from 'fs/promises';
-import { getLogger } from '@ricky/logger';
+import { getLogger } from '@neo/logger';
 
 const logger = getLogger();
 

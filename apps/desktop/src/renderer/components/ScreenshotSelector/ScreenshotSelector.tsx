@@ -10,6 +10,8 @@ type SelectorPayload = {
   lastRegion?: { x: number; y: number; width: number; height: number; monitorIndex?: number; displayId?: number };
   displayId: number;
   monitorIndex: number;
+  displayCount?: number;
+  canSwitchDisplay?: boolean;
   longCaptureSupported?: boolean;
   longCaptureReason?: string;
   mode?: 'initial' | 'long';
@@ -17,7 +19,7 @@ type SelectorPayload = {
   lockSelection?: boolean;
 };
 
-type SelectorAction = 'single' | 'long' | 'finish' | 'cancel';
+type SelectorAction = 'single' | 'long' | 'finish' | 'cancel' | 'switch-display';
 
 export function ScreenshotSelector(): JSX.Element {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -70,6 +72,10 @@ export function ScreenshotSelector(): JSX.Element {
         } else {
           sendAction('single');
         }
+      }
+      if (event.key === 'Tab') {
+        event.preventDefault();
+        sendAction('switch-display');
       }
     };
     window.addEventListener('keydown', handleKey);
@@ -174,6 +180,9 @@ export function ScreenshotSelector(): JSX.Element {
   const longSupported = payload?.longCaptureSupported !== false;
   const longDisabledReason = longSupported ? '' : payload?.longCaptureReason || 'Captura longa indisponivel';
   const isLongMode = payload?.mode === 'long';
+  const canSwitchDisplay = payload?.canSwitchDisplay === true;
+  const currentDisplayNumber = typeof payload?.monitorIndex === 'number' ? payload.monitorIndex + 1 : 1;
+  const displayCount = payload?.displayCount || 1;
 
   return (
     <div
@@ -215,6 +224,14 @@ export function ScreenshotSelector(): JSX.Element {
       <div className="screenshot-selector__actions" onMouseDown={(event) => event.stopPropagation()}>
         <button className="screenshot-selector__btn ghost" onClick={() => sendAction('cancel')}>
           Cancelar
+        </button>
+        <button
+          className="screenshot-selector__btn secondary"
+          onClick={() => sendAction('switch-display')}
+          disabled={!canSwitchDisplay}
+          title={canSwitchDisplay ? 'Trocar para outro monitor (atalho: Tab)' : 'Apenas um monitor disponivel'}
+        >
+          Tela {currentDisplayNumber}/{displayCount}
         </button>
         <button
           className="screenshot-selector__btn icon"

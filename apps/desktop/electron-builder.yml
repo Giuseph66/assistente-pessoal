@@ -1,11 +1,41 @@
-appId: com.ricky.assistant
-productName: Ricky Assistant
+appId: com.neo.assistant
+productName: NEO
 directories:
-  output: dist
+  output: dist-release
 files:
   - dist/**/*
   - package.json
+  - node_modules/**/*
+npmRebuild: false
+nodeGypRebuild: false
+asar: true
+asarUnpack:
+  - node_modules/sharp/**
+  - node_modules/@img/**
 linux:
-  target: AppImage
+  target:
+    - deb
+    - AppImage
   category: Utility
-
+  # icon: assets/icon.png  # Descomente e adicione um ícone PNG (512x512) quando disponível
+  maintainer: NEO Team
+  description: Assistente Pessoal Inteligente
+  desktop:
+    Name: NEO
+    Comment: Assistente Pessoal Inteligente
+    Categories: Utility;Productivity;
+    Keywords: assistant;ai;productivity;
+deb:
+  priority: optional
+  depends:
+    - libnss3
+    - libatk-bridge2.0-0
+    - libdrm2
+    - libxkbcommon0
+    - libxss1
+    - libasound2
+    - libatspi2.0-0
+    - libgtk-3-0
+    - libgbm1
+appImage:
+  artifactName: ${productName}-${version}-${arch}-v107.${ext}

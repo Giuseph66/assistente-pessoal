@@ -1,4 +1,4 @@
-import { SttPartialEvent, SttFinalEvent } from '@ricky/shared';
+import { SttPartialEvent, SttFinalEvent } from '@neo/shared';
 
 /**
  * Eventos emitidos pelo STT provider

@@ -1,13 +1,15 @@
 import { Handle, Position } from '@xyflow/react';
+import { FlowIcon, FlowIconName } from '../FlowIcons';
 
 export function ActionNode({ data }: { data: any }) {
-  const getIcon = (type: string) => {
-    if (type.includes('click')) return '🖱️';
-    if (type.includes('type')) return '⌨️';
-    if (type.includes('wait')) return '⏳';
-    if (type.includes('screenshot')) return '📸';
-    if (type.includes('mouse')) return '🖱️';
-    return '⚡';
+  const getIcon = (type: string): FlowIconName => {
+    if (type === 'action.clickCoordinates') return 'mapPin';
+    if (type === 'action.clickFoundImage') return 'target';
+    if (type.includes('click') || type.includes('mouse')) return 'mousePointer';
+    if (type.includes('type') || type.includes('pressKey')) return 'keyboard';
+    if (type.includes('wait')) return 'clock';
+    if (type.includes('screenshot')) return 'camera';
+    return 'bolt';
   };
 
   const label = data.data.label || data.nodeType.split('.').pop();
@@ -18,7 +20,9 @@ export function ActionNode({ data }: { data: any }) {
       <Handle type="target" position={Position.Left} />
 
       <div className="node-header">
-        <div className="node-icon">{getIcon(data.nodeType)}</div>
+        <div className="node-icon">
+          <FlowIcon name={getIcon(data.nodeType)} size={15} />
+        </div>
         <div className="node-title-container" style={{ flex: 1, overflow: 'hidden' }}>
           <div className="node-type">{data.nodeType.split('.').pop()}</div>
           <div className="node-title">{label}</div>
@@ -40,4 +44,3 @@ export function ActionNode({ data }: { data: any }) {
     </div>
   );
 }
-

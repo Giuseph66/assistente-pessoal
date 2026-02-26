@@ -56,7 +56,7 @@ export const VoskOfflineSection: React.FC<VoskOfflineSectionProps> = ({ showToas
           const aiConfig = await window.ai?.getConfig?.();
           if (aiConfig?.providerId === 'gemini') {
             nextProvider = 'gemini_live';
-          } else if (aiConfig?.providerId === 'openai') {
+          } else if (aiConfig?.providerId === 'openai' || aiConfig?.providerId === 'openai-codex') {
             nextProvider = 'openai_realtime_transcribe';
           }
         } catch {

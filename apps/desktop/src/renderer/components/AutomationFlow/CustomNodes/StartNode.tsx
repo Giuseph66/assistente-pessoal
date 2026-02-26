@@ -1,4 +1,5 @@
 import { Handle, Position } from '@xyflow/react';
+import { FlowIcon } from '../FlowIcons';
 
 export function StartNode({ data }: { data: any }) {
   const isRunning = data.isRunning;
@@ -20,11 +21,10 @@ export function StartNode({ data }: { data: any }) {
         color: '#10b981',
         letterSpacing: '0.05em'
       }}>
-        <span style={{ fontSize: '18px' }}>▶</span>
+        <FlowIcon name="play" size={18} />
         INÍCIO
       </div>
       <Handle type="source" position={Position.Right} id="OUT" style={{ background: '#10b981', width: '12px', height: '12px' }} />
     </div>
   );
 }
-

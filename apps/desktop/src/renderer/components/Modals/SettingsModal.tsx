@@ -2,9 +2,8 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useSttMicAnalyser } from '../../store/sttMicStore';
 import { ApiSection } from './SettingsSections/ApiSection';
 import { AudioSection } from './SettingsSections/AudioSection';
-import { PermissionsSection } from './SettingsSections/PermissionsSection';
+import { NotificationsSection } from './SettingsSections/NotificationsSection';
 import { FeaturesSection } from './SettingsSections/FeaturesSection';
-import { PrivacySection } from './SettingsSections/PrivacySection';
 import { ShortcutsSection } from './SettingsSections/ShortcutsSection';
 import { AIPromptsSection } from './SettingsSections/AIPromptsSection';
 import { DashboardSection } from './SettingsSections/DashboardSection';
@@ -21,14 +20,62 @@ interface SettingsModalProps {
 type SettingsSection =
     | 'api'
     | 'audio'
-    | 'permissions'
+    | 'notifications'
     | 'features'
     | 'shortcuts'
-    | 'privacy'
     | 'ai-prompts'
     | 'dashboard'
     | 'automation'
     | 'help';
+
+const OPENAI_ANALYSIS_LABEL_TO_ID: Record<string, string> = {
+    'GPT-5.2 Standard': 'gpt-5',
+    'GPT-5.2 Mini': 'gpt-5-mini',
+    'GPT-4.1 Standard': 'gpt-4.1',
+    'GPT-4o': 'gpt-4o',
+    'o1': 'o1',
+};
+
+const OPENAI_ANALYSIS_ID_TO_LABEL: Record<string, string> = {
+    'gpt-5': 'GPT-5.2 Standard',
+    'gpt-5-mini': 'GPT-5.2 Mini',
+    'gpt-4.1': 'GPT-4.1 Standard',
+    'gpt-4o': 'GPT-4o',
+    'o1': 'o1',
+};
+
+const GEMINI_ANALYSIS_LABEL_TO_ID: Record<string, string> = {
+    'Gemini 3 Pro': 'gemini-3-flash',
+    'Gemini 3 Flash': 'gemini-3-flash',
+    'Gemini 2.5 Pro': 'gemini-2.5-flash',
+    'Gemini 2.5 Flash': 'gemini-2.5-flash',
+    'Gemini 2.5 Flash-Lite': 'gemini-2.5-flash-lite',
+};
+
+function resolveAnalysisModelId(
+    provider: 'google' | 'openai' | 'local' | 'vosk',
+    labelOrId: string
+): string {
+    if (provider === 'openai') {
+        return OPENAI_ANALYSIS_LABEL_TO_ID[labelOrId] || labelOrId || 'gpt-5';
+    }
+    if (provider === 'google') {
+        return GEMINI_ANALYSIS_LABEL_TO_ID[labelOrId] || labelOrId || 'gemini-2.5-flash';
+    }
+    return labelOrId;
+}
+
+function resolveAnalysisModelLabel(
+    providerId: string | undefined,
+    modelId: string | undefined,
+    fallback: string
+): string {
+    if (!modelId) return fallback;
+    if (providerId === 'openai' || providerId === 'openai-codex') {
+        return OPENAI_ANALYSIS_ID_TO_LABEL[modelId] || modelId;
+    }
+    return modelId;
+}
 
 
 export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
@@ -36,6 +83,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
     const [performance, setPerformance] = useState('personalizado');
     const [apiProvider, setApiProvider] = useState<'google' | 'openai' | 'local' | 'vosk'>('google');
     const [toast, setToast] = useState<string | null>(null);
+
+    const [isSidebarMinimized, setIsSidebarMinimized] = useState(() => {
+        return localStorage.getItem('ricky:settings-sidebar-minimized') === 'true';
+    });
 
     // Model selection states
     const [analysisModel, setAnalysisModel] = useState(() => {
@@ -81,7 +132,19 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
                 if (config && config.providerId) {
                     setSavedProvider(config.providerId);
                     // Sincroniza a aba atual com o provedor salvo no primeiro carregamento
-                    setApiProvider(config.providerId === 'gemini' ? 'google' : config.providerId === 'openai' ? 'openai' : 'local');
+                    setApiProvider(
+                        config.providerId === 'gemini'
+                            ? 'google'
+                            : (config.providerId === 'openai' || config.providerId === 'openai-codex')
+                                ? 'openai'
+                                : 'local'
+                    );
+                    const fallbackAnalysisLabel =
+                        (config.providerId === 'openai' || config.providerId === 'openai-codex')
+                            ? (localStorage.getItem('ricky:analysis-model:openai') || 'GPT-5.2 Standard')
+                            : (localStorage.getItem('ricky:analysis-model:google') || 'Gemini 3 Pro');
+                    const resolvedLabel = resolveAnalysisModelLabel(config.providerId, config.modelName, fallbackAnalysisLabel);
+                    setAnalysisModel(resolvedLabel);
                 }
 
                 setIsKeyLoaded(true);
@@ -107,9 +170,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
                         const desiredProvider =
                             config.providerId === 'gemini'
                                 ? 'gemini_live'
-                                : config.providerId === 'openai'
-                                ? 'openai_realtime_transcribe'
-                                : null;
+                                : (config.providerId === 'openai' || config.providerId === 'openai-codex')
+                                    ? 'openai_realtime_transcribe'
+                                    : null;
                         if (desiredProvider && desiredProvider !== sttConfig?.provider) {
                             await window.stt.updateConfig({ provider: desiredProvider });
                             localStorage.setItem('ricky:live-stt-provider', desiredProvider);
@@ -169,7 +232,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
             }
 
             // Salva a configuração como ativa
-            await (globalThis as any).ai.saveConfig({ providerId });
+            const providerKey = apiProvider === 'google' ? 'google' : apiProvider === 'openai' ? 'openai' : apiProvider;
+            const modelName = resolveAnalysisModelId(providerKey, analysisModel);
+            await (globalThis as any).ai.saveConfig({ providerId, modelName });
             setSavedProvider(providerId);
             showToast(`Configurações de ${apiProvider.toUpperCase()} aplicadas e ativadas!`);
 
@@ -179,8 +244,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
                     providerId === 'gemini'
                         ? 'gemini_live'
                         : providerId === 'openai'
-                        ? 'openai_realtime_transcribe'
-                        : null;
+                            ? 'openai_realtime_transcribe'
+                            : null;
                 if (sttProvider) {
                     await window.stt.updateConfig({ provider: sttProvider });
                     localStorage.setItem('ricky:live-stt-provider', sttProvider);
@@ -311,6 +376,12 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
         setTimeout(() => setToast(null), 3000);
     };
 
+    const toggleSidebar = () => {
+        const newState = !isSidebarMinimized;
+        setIsSidebarMinimized(newState);
+        localStorage.setItem('ricky:settings-sidebar-minimized', String(newState));
+    };
+
     if (!isOpen) return null;
 
     const renderContent = () => {
@@ -326,6 +397,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
                         setGeminiKey={setGeminiKey}
                         setOpenaiKey={setOpenaiKey}
                         handleSaveKey={handleSaveKey}
+                        setSavedProvider={setSavedProvider}
                         performance={performance}
                         setPerformance={setPerformance}
                         analysisModel={analysisModel}
@@ -350,8 +422,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
                         showToast={showToast}
                     />
                 );
-            case 'permissions':
-                return <PermissionsSection />;
+            case 'notifications':
+                return <NotificationsSection showToast={showToast} />;
             case 'help':
                 return <HelpSection />;
             case 'features':
@@ -362,8 +434,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
                         showToast={showToast}
                     />
                 );
-            case 'privacy':
-                return <PrivacySection />;
             case 'shortcuts':
                 return <ShortcutsSection />;
             case 'ai-prompts':
@@ -398,54 +468,53 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
 
             <div className="modal-main">
                 {/* Sidebar */}
-                <div className="modal-sidebar">
+                <div className={`modal-sidebar ${isSidebarMinimized ? 'sidebar-minimized' : ''}`}>
                     <nav className="sidebar-nav">
                         <button className={`sidebar-item ${activeSection === 'api' ? 'active' : ''}`} onClick={() => setActiveSection('api')}>
                             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" /></svg>
-                            API e Modelos
+                            <span>API e Modelos</span>
                         </button>
                         <button className={`sidebar-item ${activeSection === 'audio' ? 'active' : ''}`} onClick={() => setActiveSection('audio')}>
                             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" /><path d="M19 10v2a7 7 0 0 1-14 0v-2" /><line x1="12" y1="19" x2="12" y2="23" /><line x1="8" y1="23" x2="16" y2="23" /></svg>
-                            Áudio e Tela
+                            <span>Áudio e Tela</span>
                         </button>
-                        <button className={`sidebar-item ${activeSection === 'permissions' ? 'active' : ''}`} onClick={() => setActiveSection('permissions')}>
-                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" /></svg>
-                            Permissões
+                        <button className={`sidebar-item ${activeSection === 'notifications' ? 'active' : ''}`} onClick={() => setActiveSection('notifications')}>
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M15 17h5l-1.4-1.4A2 2 0 0 1 18 14.2V11a6 6 0 1 0-12 0v3.2a2 2 0 0 1-.6 1.4L4 17h5m6 0a3 3 0 1 1-6 0" /></svg>
+                            <span>Notificações</span>
                         </button>
                         <button className={`sidebar-item ${activeSection === 'features' ? 'active' : ''}`} onClick={() => setActiveSection('features')}>
                             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="4" y1="21" x2="4" y2="14" /><line x1="4" y1="10" x2="4" y2="3" /><line x1="12" y1="21" x2="12" y2="12" /><line x1="12" y1="8" x2="12" y2="3" /><line x1="20" y1="21" x2="20" y2="16" /><line x1="20" y1="12" x2="20" y2="3" /><line x1="2" y1="14" x2="6" y2="14" /><line x1="10" y1="8" x2="14" y2="8" /><line x1="18" y1="16" x2="22" y2="16" /></svg>
-                            Recursos
+                            <span>Recursos</span>
                         </button>
                         <button className={`sidebar-item ${activeSection === 'shortcuts' ? 'active' : ''}`} onClick={() => setActiveSection('shortcuts')}>
                             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="2" y="4" width="20" height="16" rx="2" ry="2" /><line x1="6" y1="8" x2="6" y2="8" /><line x1="10" y1="8" x2="10" y2="8" /><line x1="14" y1="8" x2="14" y2="8" /><line x1="18" y1="8" x2="18" y2="8" /><line x1="6" y1="12" x2="6" y2="12" /><line x1="10" y1="12" x2="10" y2="12" /><line x1="14" y1="12" x2="14" y2="12" /><line x1="18" y1="12" x2="18" y2="12" /><line x1="7" y1="16" x2="17" y2="16" /></svg>
-                            Atalhos
-                        </button>
-                        <button className={`sidebar-item ${activeSection === 'privacy' ? 'active' : ''}`} onClick={() => setActiveSection('privacy')}>
-                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" /></svg>
-                            Privacidade
+                            <span>Atalhos</span>
                         </button>
                         <button className={`sidebar-item ${activeSection === 'ai-prompts' ? 'active' : ''}`} onClick={() => setActiveSection('ai-prompts')}>
                             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" /></svg>
-                            Personalidades IA
+                            <span>Personalidades IA</span>
                         </button>
                         <button className={`sidebar-item ${activeSection === 'dashboard' ? 'active' : ''}`} onClick={() => setActiveSection('dashboard')}>
                             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2" /><line x1="3" y1="9" x2="21" y2="9" /><line x1="9" y1="21" x2="9" y2="9" /></svg>
-                            Dashboard
+                            <span>Dashboard</span>
                         </button>
                         <button className={`sidebar-item ${activeSection === 'automation' ? 'active' : ''}`} onClick={() => setActiveSection('automation')}>
                             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="2" y="3" width="20" height="14" rx="2" ry="2" /><line x1="8" y1="21" x2="16" y2="21" /><line x1="12" y1="17" x2="12" y2="21" /></svg>
-                            Automação
-                        </button>{/*
-                            <button className={`sidebar-item ${activeSection === 'premium' ? 'active' : ''}`} onClick={() => setActiveSection('premium')}>
-                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" /></svg>
-                                Premium
-                            </button>
-                                */}
+                            <span>Automação</span>
+                        </button>
                         <button className={`sidebar-item ${activeSection === 'help' ? 'active' : ''}`} onClick={() => setActiveSection('help')}>
                             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10" /><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" /><line x1="12" y1="17" x2="12" y2="17" /></svg>
-                            Ajuda
+                            <span>Ajuda</span>
                         </button>
                     </nav>
+
+                    <div className="sidebar-footer">
+                        <button className="sidebar-toggle-btn" onClick={toggleSidebar} title={isSidebarMinimized ? "Expandir" : "Minimizar"}>
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ transform: isSidebarMinimized ? 'rotate(180deg)' : 'none', transition: 'transform 0.3s ease' }}>
+                                <path d="M11 17l-5-5 5-5M18 17l-5-5 5-5" />
+                            </svg>
+                        </button>
+                    </div>
                 </div>
 
                 {/* Content */}
@@ -457,28 +526,28 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
             {/* Footer */}
             <div className="modal-footer">
                 <div className="modal-footer-buttons">
-                <button className="power-btn" onClick={() => (globalThis as any).window.electron.ipcRenderer.send('app:quit')}
-                    title="Sair do App"
+                    <button className="power-btn" onClick={() => (globalThis as any).window.electron.ipcRenderer.send('app:quit')}
+                        title="Sair do App"
                     >
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                        <path d="M18.36 6.64a9 9 0 1 1-12.73 0" />
-                        <line x1="12" y1="2" x2="12" y2="12" />
-                    </svg>
-                </button>
-                <button 
-                    className="power-btn minimize-btn" 
-                    onClick={() => {
-                        (globalThis as any).window.electron.ipcRenderer.send('window:enter-mini-mode');
-                        onClose();
-                    }}
-                    title="Minimizar para Mini HUD"
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <path d="M18.36 6.64a9 9 0 1 1-12.73 0" />
+                            <line x1="12" y1="2" x2="12" y2="12" />
+                        </svg>
+                    </button>
+                    <button
+                        className="power-btn minimize-btn"
+                        onClick={() => {
+                            (globalThis as any).window.electron.ipcRenderer.send('window:enter-mini-mode');
+                            onClose();
+                        }}
+                        title="Minimizar para Mini HUD"
                     >
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                        <circle cx="12" cy="12" r="10" />
-                        <line x1="8" y1="12" x2="16" y2="12" />
-                    </svg>
-                </button>
-                    </div>
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <circle cx="12" cy="12" r="10" />
+                            <line x1="8" y1="12" x2="16" y2="12" />
+                        </svg>
+                    </button>
+                </div>
                 <button className="btn-save" onClick={onClose}>Salvar</button>
             </div>
         </div>

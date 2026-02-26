@@ -1,4 +1,4 @@
-import { getLogger } from '@ricky/logger';
+import { getLogger } from '@neo/logger';
 import { STTProvider, STTEvent } from './interface.js';
 import { WhisperCppProvider } from './providers/whisper.js';
 

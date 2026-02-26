@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import type { TextHighlightBox } from '@ricky/shared';
+import type { TextHighlightBox } from '@neo/shared';
 import './TextHighlightOverlay.css';
 
 type TextHighlightPayload = {

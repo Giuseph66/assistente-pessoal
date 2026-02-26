@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { AIConfig, AIProviderId } from '@ricky/shared';
+import { AIConfig, AIProviderId } from '@neo/shared';
+import { OpenAIAuth } from '../../components/Auth/OpenAIAuth';
 import './AIAgentSettings.css';
 
 export function AIAgentSettings(): JSX.Element {
@@ -258,6 +259,7 @@ export function AIAgentSettings(): JSX.Element {
 
   const providerKeys = keys.filter((k) => k.providerId === selectedProvider);
   const activeKeysCount = providerKeys.filter(k => k.status === 'active').length;
+  const isOAuthOnlyProvider = selectedProvider === 'openai-codex';
 
   return (
     <div className="ai-settings-container">
@@ -301,17 +303,24 @@ export function AIAgentSettings(): JSX.Element {
         <div className="ai-settings-card">
           <div className="ai-settings-field">
             <label>Provedor</label>
-            <select
-              value={selectedProvider}
-              onChange={(e) => handleProviderChange(e.target.value as AIProviderId)}
-              className="ai-settings-select"
-            >
+            <div className="ai-provider-tabs">
               {providers.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name}
-                </option>
+                <button
+                  key={p.id}
+                  data-provider={p.id}
+                  className={`ai-provider-tab ${selectedProvider === p.id ? 'active' : ''}`}
+                  onClick={() => handleProviderChange(p.id as AIProviderId)}
+                >
+                  {p.id === 'openai'
+                    ? 'OpenAI (API Key)'
+                    : p.id === 'openai-codex'
+                      ? 'OpenAI (OAuth Codex)'
+                      : p.id === 'gemini'
+                        ? 'Google Gemini'
+                        : p.name}
+                </button>
               ))}
-            </select>
+            </div>
           </div>
 
           <div className="ai-settings-field">
@@ -366,6 +375,14 @@ export function AIAgentSettings(): JSX.Element {
         </div>
       </section>
 
+      {/* Seção OAuth — apenas para OpenAI */}
+      {(selectedProvider === 'openai' || selectedProvider === 'openai-codex') && (
+        <section className="ai-settings-section">
+          <h3>Conexão OpenAI (OAuth)</h3>
+          <OpenAIAuth />
+        </section>
+      )}
+
       {/* Seção 2: API Keys */}
       <section className="ai-settings-section">
         <div className="ai-settings-section-header">
@@ -376,11 +393,13 @@ export function AIAgentSettings(): JSX.Element {
         </div>
 
         <div className="ai-settings-card">
-          {!showAddKey ? (
-            <button
-              className="btn btn-primary"
-              onClick={() => setShowAddKey(true)}
-            >
+          {isOAuthOnlyProvider ? (
+            <div className="ai-settings-empty-state">
+              <p>Este provider usa OAuth e não requer API key manual.</p>
+              <p className="ai-settings-hint">Use a seção "Conexão OpenAI (OAuth)" para conectar sua conta.</p>
+            </div>
+          ) : !showAddKey ? (
+            <button className="btn btn-primary" onClick={() => setShowAddKey(true)}>
               ➕ Adicionar Nova Chave
             </button>
           ) : (
@@ -428,81 +447,83 @@ export function AIAgentSettings(): JSX.Element {
             </div>
           )}
 
-          <div className="ai-settings-keys-list">
-            {providerKeys.length === 0 ? (
-              <div className="ai-settings-empty-state">
-                <p>Nenhuma chave cadastrada para este provider</p>
-                <p className="ai-settings-hint">Adicione uma chave API para começar a usar o agente de IA</p>
-              </div>
-            ) : (
-              providerKeys.map((key) => (
-                <div key={key.id} className="ai-settings-key-card">
-                  <div className="ai-settings-key-header">
-                    <div className="ai-settings-key-info">
-                      <h4>{key.alias}</h4>
-                      <span className={getStatusBadgeClass(key.status)}>
-                        {key.status === 'active' ? '🟢 Ativa' : key.status === 'cooldown' ? '🟡 Cooldown' : '🔴 Desabilitada'}
-                      </span>
-                    </div>
-                    <div className="ai-settings-key-actions">
-                      <button
-                        className="btn btn-sm btn-primary"
-                        onClick={() => handleTestKey(key.id)}
-                        disabled={testingKey === key.id}
-                        title="Testar chave"
-                      >
-                        {testingKey === key.id ? '⏳ Testando...' : '🧪 Testar'}
-                      </button>
-                      <button
-                        className="btn btn-sm"
-                        onClick={() => handleUpdateKeyStatus(key.id, key.status === 'active' ? 'disabled' : 'active')}
-                        title={key.status === 'active' ? 'Desabilitar chave' : 'Habilitar chave'}
-                      >
-                        {key.status === 'active' ? '🔴 Desabilitar' : '🟢 Habilitar'}
-                      </button>
-                      <button
-                        className="btn btn-sm btn-danger"
-                        onClick={() => handleRemoveKey(key.id)}
-                        title="Remover chave"
-                      >
-                        🗑️ Remover
-                      </button>
-                    </div>
-                  </div>
-                  <div className="ai-settings-key-details">
-                    <div className="key-detail-row">
-                      <span className="key-detail-label">Chave:</span>
-                      <span className="key-detail-value">***{key.last4}</span>
-                    </div>
-                    <div className="key-detail-row">
-                      <span className="key-detail-label">Estatísticas:</span>
-                      <span className="key-detail-value">
-                        ✅ {key.successCount} sucessos | ❌ {key.failureCount} falhas
-                      </span>
-                    </div>
-                    {key.lastUsedAt && (
-                      <div className="key-detail-row">
-                        <span className="key-detail-label">Última utilização:</span>
-                        <span className="key-detail-value">{formatDate(key.lastUsedAt)}</span>
-                      </div>
-                    )}
-                    {key.cooldownUntil && key.cooldownUntil > Date.now() && (
-                      <div className="key-detail-row">
-                        <span className="key-detail-label">Cooldown até:</span>
-                        <span className="key-detail-value">{formatDate(key.cooldownUntil)}</span>
-                      </div>
-                    )}
-                    {key.lastErrorCode && (
-                      <div className="key-detail-row">
-                        <span className="key-detail-label">Último erro:</span>
-                        <span className="key-detail-value error-code">{key.lastErrorCode}</span>
-                      </div>
-                    )}
-                  </div>
+          {!isOAuthOnlyProvider && (
+            <div className="ai-settings-keys-list">
+              {providerKeys.length === 0 ? (
+                <div className="ai-settings-empty-state">
+                  <p>Nenhuma chave cadastrada para este provider</p>
+                  <p className="ai-settings-hint">Adicione uma chave API para começar a usar o agente de IA</p>
                 </div>
-              ))
-            )}
-          </div>
+              ) : (
+                providerKeys.map((key) => (
+                  <div key={key.id} className="ai-settings-key-card">
+                    <div className="ai-settings-key-header">
+                      <div className="ai-settings-key-info">
+                        <h4>{key.alias}</h4>
+                        <span className={getStatusBadgeClass(key.status)}>
+                          {key.status === 'active' ? '🟢 Ativa' : key.status === 'cooldown' ? '🟡 Cooldown' : '🔴 Desabilitada'}
+                        </span>
+                      </div>
+                      <div className="ai-settings-key-actions">
+                        <button
+                          className="btn btn-sm btn-primary"
+                          onClick={() => handleTestKey(key.id)}
+                          disabled={testingKey === key.id}
+                          title="Testar chave"
+                        >
+                          {testingKey === key.id ? '⏳ Testando...' : '🧪 Testar'}
+                        </button>
+                        <button
+                          className="btn btn-sm"
+                          onClick={() => handleUpdateKeyStatus(key.id, key.status === 'active' ? 'disabled' : 'active')}
+                          title={key.status === 'active' ? 'Desabilitar chave' : 'Habilitar chave'}
+                        >
+                          {key.status === 'active' ? '🔴 Desabilitar' : '🟢 Habilitar'}
+                        </button>
+                        <button
+                          className="btn btn-sm btn-danger"
+                          onClick={() => handleRemoveKey(key.id)}
+                          title="Remover chave"
+                        >
+                          🗑️ Remover
+                        </button>
+                      </div>
+                    </div>
+                    <div className="ai-settings-key-details">
+                      <div className="key-detail-row">
+                        <span className="key-detail-label">Chave:</span>
+                        <span className="key-detail-value">***{key.last4}</span>
+                      </div>
+                      <div className="key-detail-row">
+                        <span className="key-detail-label">Estatísticas:</span>
+                        <span className="key-detail-value">
+                          ✅ {key.successCount} sucessos | ❌ {key.failureCount} falhas
+                        </span>
+                      </div>
+                      {key.lastUsedAt && (
+                        <div className="key-detail-row">
+                          <span className="key-detail-label">Última utilização:</span>
+                          <span className="key-detail-value">{formatDate(key.lastUsedAt)}</span>
+                        </div>
+                      )}
+                      {key.cooldownUntil && key.cooldownUntil > Date.now() && (
+                        <div className="key-detail-row">
+                          <span className="key-detail-label">Cooldown até:</span>
+                          <span className="key-detail-value">{formatDate(key.cooldownUntil)}</span>
+                        </div>
+                      )}
+                      {key.lastErrorCode && (
+                        <div className="key-detail-row">
+                          <span className="key-detail-label">Último erro:</span>
+                          <span className="key-detail-value error-code">{key.lastErrorCode}</span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          )}
         </div>
       </section>
 
@@ -630,7 +651,7 @@ export function AIAgentSettings(): JSX.Element {
               <li><strong>Connection errors</strong> - Erros de conexão</li>
             </ul>
             <p className="ai-settings-warning">
-              <strong>⚠️ Nota:</strong> Erros <strong>401</strong> (Não autorizado) e <strong>403</strong> (Proibido) 
+              <strong>⚠️ Nota:</strong> Erros <strong>401</strong> (Não autorizado) e <strong>403</strong> (Proibido)
               desabilitam a chave permanentemente, pois indicam problema de autenticação.
             </p>
           </div>
@@ -644,16 +665,16 @@ export function AIAgentSettings(): JSX.Element {
           <div className="ai-settings-info-box">
             <h4>🔒 Criptografia de Chaves</h4>
             <p>
-              As chaves API são armazenadas criptografadas usando <strong>safeStorage</strong> do Electron 
+              As chaves API são armazenadas criptografadas usando <strong>safeStorage</strong> do Electron
               (quando disponível) ou <strong>AES-256-GCM</strong> como fallback.
             </p>
             <h4>🛡️ Segurança do Renderer</h4>
             <p>
-              As chaves <strong>nunca são expostas</strong> ao renderer process. Todas as operações são feitas 
+              As chaves <strong>nunca são expostas</strong> ao renderer process. Todas as operações são feitas
               via IPC no main process, garantindo que as chaves permaneçam seguras.
             </p>
             <p className="ai-settings-hint">
-              As chaves são descriptografadas apenas quando necessário para fazer chamadas à API, e nunca são 
+              As chaves são descriptografadas apenas quando necessário para fazer chamadas à API, e nunca são
               logadas ou expostas em mensagens de erro.
             </p>
           </div>

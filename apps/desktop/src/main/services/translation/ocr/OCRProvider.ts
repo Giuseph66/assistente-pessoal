@@ -1,4 +1,4 @@
-import { OCRBlock } from '@ricky/shared';
+import { OCRBlock } from '@neo/shared';
 
 export type OCRRequest = {
   imagePath: string;

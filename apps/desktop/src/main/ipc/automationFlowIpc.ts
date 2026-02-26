@@ -1,9 +1,10 @@
 import { ipcMain, BrowserWindow } from 'electron';
 import { z } from 'zod';
-import { getLogger } from '@ricky/logger';
+import { getLogger } from '@neo/logger';
 import { getAutomationFlowStore } from '../storage/automationFlowStore';
 import { getOrkutFlowRunner } from '../automation/flow/OrkutFlowRunner';
 import { OrkutFlowCompiler } from '../automation/flow/OrkutFlowCompiler';
+import { DatabaseManager } from '../database';
 
 const logger = getLogger();
 
@@ -52,9 +53,9 @@ const GraphSchema = z.object({
   }).optional(),
 });
 
-export function registerAutomationFlowIpc() {
+export function registerAutomationFlowIpc(db: DatabaseManager) {
   const store = getAutomationFlowStore();
-  const runner = getOrkutFlowRunner();
+  const runner = getOrkutFlowRunner(db);
   const compiler = new OrkutFlowCompiler();
 
   // Listeners for runner events
@@ -117,4 +118,3 @@ export function registerAutomationFlowIpc() {
 
   logger.info('Automation Flow IPC handlers registered');
 }
-

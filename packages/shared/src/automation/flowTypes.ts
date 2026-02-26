@@ -13,7 +13,8 @@ export type FlowNodeType =
   | 'action.dragMouse'
   | 'action.screenshot'
   | 'condition.findImage'
-  | 'logic.loop';
+  | 'logic.loop'
+  | 'ai.brain';
 
 export interface BaseNodeData {
   label?: string;
@@ -96,6 +97,20 @@ export interface LoopData extends BaseNodeData {
   maxIterations: number;
 }
 
+export interface AIBrainData extends BaseNodeData {
+  instruction: string;
+  contextTemplate?: string;
+  inputMode: 'context' | 'visual' | 'hybrid';
+  captureScope: 'fullscreen' | 'region';
+  captureRegion?: { x: number; y: number; width: number; height: number };
+  routes: string[];
+  defaultRoute: string;
+  toolChannels: string[];
+  temperature?: number;
+  maxTokens?: number;
+  failSafeMaxToolCalls?: number;
+}
+
 export type AutomationNodeData =
   | { nodeType: 'start'; data: StartNodeData }
   | { nodeType: 'end'; data: EndNodeData }
@@ -109,7 +124,8 @@ export type AutomationNodeData =
   | { nodeType: 'action.dragMouse'; data: DragMouseData }
   | { nodeType: 'action.screenshot'; data: ScreenshotData }
   | { nodeType: 'condition.findImage'; data: FindImageData }
-  | { nodeType: 'logic.loop'; data: LoopData };
+  | { nodeType: 'logic.loop'; data: LoopData }
+  | { nodeType: 'ai.brain'; data: AIBrainData };
 
 export interface FlowNode {
   id: string;
@@ -188,4 +204,3 @@ export interface FlowExecutionErrorEvent extends FlowExecutionEventBase {
   nodeId?: string;
 }
 export interface FlowExecutionCompletedEvent extends FlowExecutionEventBase { }
-

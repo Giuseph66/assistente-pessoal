@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import type { MouseEvent } from 'react';
-import { TranslationRegion } from '@ricky/shared';
+import { TranslationRegion } from '@neo/shared';
 
 type Props = {
   active: boolean;

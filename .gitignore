@@ -16,6 +16,8 @@ coverage/
 
 # Production
 dist/
+dist-release/
+release/
 build/
 out/
 *.log

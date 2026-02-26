@@ -1,6 +1,6 @@
 import { BrowserWindow, ipcMain } from 'electron';
 import { RecorderService } from '../audio/recording/RecorderService';
-import { RecorderStartOptions, RecorderStatus } from '@ricky/shared';
+import { RecorderStartOptions, RecorderStatus } from '@neo/shared';
 
 const broadcast = (channel: string, payload: any) => {
   BrowserWindow.getAllWindows().forEach((win) => {

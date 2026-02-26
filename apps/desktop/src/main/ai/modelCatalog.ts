@@ -1,7 +1,7 @@
 import { app } from 'electron';
 import { existsSync, readFileSync, writeFileSync } from 'fs';
 import { join } from 'path';
-import { ModelInfo, AIProviderId } from '@ricky/shared';
+import { ModelInfo, AIProviderId } from '@neo/shared';
 
 type ProviderCatalog = {
   models: Array<Omit<ModelInfo, 'provider'>>;
@@ -146,6 +146,31 @@ const DEFAULT_CATALOG: ModelCatalog = {
           supportsVision: true,
           maxTokens: 4096,
           supportsStreaming: false,
+        },
+        {
+          id: 'gpt-4.1',
+          name: 'GPT-4.1',
+          supportsVision: true,
+          maxTokens: 8192,
+          supportsStreaming: false,
+        },
+      ],
+    },
+    'openai-codex': {
+      models: [
+        {
+          id: 'gpt-5',
+          name: 'GPT-5',
+          supportsVision: true,
+          maxTokens: 8192,
+          supportsStreaming: true,
+        },
+        {
+          id: 'gpt-5-mini',
+          name: 'GPT-5 Mini',
+          supportsVision: true,
+          maxTokens: 8192,
+          supportsStreaming: true,
         },
       ],
     },

@@ -10,8 +10,8 @@ import {
   AnalyzeScreenshotRequest,
   AnalyzeChatRequest,
   PromptTemplate,
-} from '@ricky/shared';
-import { getLogger } from '@ricky/logger';
+} from '@neo/shared';
+import { getLogger } from '@neo/logger';
 
 const logger = getLogger();
 import { normalizeAIConfigPatch } from '../ai/utils/aiConfigNormalization';
@@ -73,6 +73,29 @@ export function registerAIIpc(db: DatabaseManager): void {
   };
   ensureDefaultTemplates();
 
+  const ensureDefaultProviders = () => {
+    try {
+      db.saveAIProvider({
+        id: 'gemini',
+        display_name: 'Google Gemini',
+        base_url: 'https://generativelanguage.googleapis.com',
+      });
+      db.saveAIProvider({
+        id: 'openai',
+        display_name: 'OpenAI (API Key)',
+        base_url: 'https://api.openai.com',
+      });
+      db.saveAIProvider({
+        id: 'openai-codex',
+        display_name: 'OpenAI (OAuth Codex)',
+        base_url: 'https://chatgpt.com/backend-api/codex',
+      });
+    } catch (error) {
+      logger.warn({ err: error }, 'Failed to ensure default AI providers');
+    }
+  };
+  ensureDefaultProviders();
+
   // ========== Config ==========
 
   ipcMain.handle('ai.getConfig', async () => {
@@ -114,7 +137,14 @@ export function registerAIIpc(db: DatabaseManager): void {
     const providers = providerManager.listProviders();
     return providers.map((p) => ({
       id: p.id,
-      name: p.id === 'gemini' ? 'Google Gemini' : p.id === 'openai' ? 'OpenAI' : p.id,
+      name:
+        p.id === 'gemini'
+          ? 'Google Gemini'
+          : p.id === 'openai'
+            ? 'OpenAI (API Key)'
+            : p.id === 'openai-codex'
+              ? 'OpenAI (OAuth Codex)'
+              : p.id,
     }));
   });
 
@@ -218,6 +248,10 @@ export function registerAIIpc(db: DatabaseManager): void {
             },
           });
           return response.ok;
+        }
+
+        if (providerId === 'openai-codex') {
+          return false;
         }
 
         return false;

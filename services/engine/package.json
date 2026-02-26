@@ -1,5 +1,5 @@
 {
-  "name": "@ricky/engine",
+  "name": "@neo/engine",
   "version": "0.0.1",
   "main": "dist/index.js",
   "type": "module",
@@ -9,8 +9,8 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@ricky/shared": "workspace:*",
-    "@ricky/logger": "workspace:*",
+    "@neo/shared": "workspace:*",
+    "@neo/logger": "workspace:*",
     "ws": "^8.14.0",
     "zod": "^3.22.4"
   },

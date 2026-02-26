@@ -1,0 +1,519 @@
+/* ─── OpenAI OAuth Component Styles ─── */
+/* Matches the dark theme from AIAgentSettings.css */
+
+.oauth-container {
+  margin-top: 12px;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  padding: 20px;
+}
+
+.oauth-container.embedded {
+  margin-top: 0;
+  background: transparent;
+  border: none;
+  padding: 0;
+}
+
+/* Header */
+.oauth-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 16px;
+}
+
+.oauth-header-left {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+.oauth-icon {
+  font-size: 28px;
+  width: 44px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, rgba(16, 163, 127, 0.2), rgba(16, 163, 127, 0.05));
+  border: 1px solid rgba(16, 163, 127, 0.3);
+  border-radius: 10px;
+}
+
+.oauth-header h4 {
+  margin: 0 0 2px 0;
+  font-size: 16px;
+  color: #f0f0f0;
+  font-weight: 600;
+}
+
+.oauth-subtitle {
+  margin: 0;
+  font-size: 12px;
+  color: #999;
+}
+
+.oauth-config-toggle {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  padding: 6px 10px;
+  font-size: 16px;
+  cursor: pointer;
+  transition: all 0.2s;
+  color: #ccc;
+}
+
+.oauth-config-toggle:hover {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+/* Alerts */
+.oauth-alert {
+  padding: 10px 14px;
+  border-radius: 8px;
+  margin-bottom: 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  position: relative;
+}
+
+.oauth-alert-error {
+  background: rgba(211, 47, 47, 0.15);
+  border: 1px solid rgba(211, 47, 47, 0.4);
+  color: #ffbcbc;
+}
+
+.oauth-alert-success {
+  background: rgba(46, 125, 50, 0.15);
+  border: 1px solid rgba(46, 125, 50, 0.4);
+  color: #c8e6c9;
+}
+
+.oauth-alert-close {
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: none;
+  border: none;
+  color: inherit;
+  cursor: pointer;
+  font-size: 14px;
+  opacity: 0.7;
+  transition: opacity 0.2s;
+}
+
+.oauth-alert-close:hover {
+  opacity: 1;
+}
+
+/* Config Section */
+.oauth-config-section {
+  background: rgba(0, 0, 0, 0.2);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 8px;
+  padding: 16px;
+  margin-bottom: 16px;
+  animation: oauth-slide-down 0.2s ease-out;
+}
+
+@keyframes oauth-slide-down {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.oauth-config-section h5 {
+  margin: 0 0 12px 0;
+  font-size: 14px;
+  color: #f0f0f0;
+}
+
+.oauth-field {
+  margin-bottom: 12px;
+}
+
+.oauth-field label {
+  display: block;
+  font-size: 12px;
+  color: #aaa;
+  margin-bottom: 4px;
+  font-weight: 500;
+}
+
+.oauth-input {
+  width: 100%;
+  padding: 8px 12px;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.04);
+  color: #f0f0f0;
+  font-size: 13px;
+  font-family: inherit;
+  transition: border-color 0.2s;
+}
+
+.oauth-input:focus {
+  outline: none;
+  border-color: rgba(16, 163, 127, 0.5);
+}
+
+.oauth-input-sm {
+  padding: 6px 10px;
+  font-size: 12px;
+}
+
+.oauth-scopes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.oauth-scope-tag {
+  padding: 3px 8px;
+  background: rgba(100, 150, 255, 0.15);
+  border: 1px solid rgba(100, 150, 255, 0.3);
+  border-radius: 4px;
+  font-size: 11px;
+  color: #88b3ff;
+  font-family: 'JetBrains Mono', 'Fira Code', monospace;
+}
+
+.oauth-code {
+  display: block;
+  padding: 6px 10px;
+  background: rgba(0, 0, 0, 0.3);
+  border-radius: 4px;
+  font-size: 12px;
+  color: #aaa;
+  user-select: all;
+}
+
+/* Profile Selector */
+.oauth-profiles {
+  margin-bottom: 16px;
+}
+
+.oauth-profiles-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.oauth-profiles-header label {
+  font-size: 12px;
+  color: #aaa;
+  font-weight: 500;
+}
+
+.oauth-add-profile-btn {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 6px;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: #ccc;
+  font-size: 16px;
+  transition: all 0.2s;
+}
+
+.oauth-add-profile-btn:hover {
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+}
+
+.oauth-new-profile-form {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 8px;
+  animation: oauth-slide-down 0.2s ease-out;
+}
+
+.oauth-new-profile-form .oauth-input-sm {
+  flex: 1;
+}
+
+.oauth-profile-tabs {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.oauth-profile-tab {
+  padding: 6px 14px;
+  border-radius: 20px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.04);
+  color: #ccc;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.oauth-profile-tab:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+.oauth-profile-tab.active {
+  background: rgba(16, 163, 127, 0.15);
+  border-color: rgba(16, 163, 127, 0.4);
+  color: #6ee7b7;
+}
+
+.oauth-expired-badge {
+  font-size: 10px;
+  padding: 1px 5px;
+  background: rgba(211, 47, 47, 0.3);
+  border-radius: 4px;
+  color: #e57373;
+}
+
+/* Action Area */
+.oauth-action-area {
+  margin-bottom: 16px;
+}
+
+/* Connect Button */
+.oauth-connect-section {
+  text-align: center;
+  padding: 16px 0;
+}
+
+.oauth-connect-btn {
+  padding: 12px 32px;
+  border-radius: 10px;
+  border: none;
+  background: linear-gradient(135deg, #10a37f 0%, #1a8a6a 100%);
+  color: #fff;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  font-family: inherit;
+  box-shadow: 0 2px 12px rgba(16, 163, 127, 0.3);
+}
+
+.oauth-connect-btn:hover:not(:disabled) {
+  background: linear-gradient(135deg, #0d8f6e 0%, #15785c 100%);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 16px rgba(16, 163, 127, 0.4);
+}
+
+.oauth-connect-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.oauth-connect-icon {
+  font-size: 18px;
+}
+
+.oauth-hint {
+  font-size: 12px;
+  color: #999;
+  margin-top: 8px;
+}
+
+/* Waiting / Spinner */
+.oauth-waiting-section {
+  padding: 16px 0;
+}
+
+.oauth-spinner-container {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 12px;
+}
+
+.oauth-spinner {
+  width: 32px;
+  height: 32px;
+  border: 3px solid rgba(16, 163, 127, 0.2);
+  border-top: 3px solid #10a37f;
+  border-radius: 50%;
+  animation: oauth-spin 0.8s linear infinite;
+  flex-shrink: 0;
+}
+
+@keyframes oauth-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.oauth-waiting-text {
+  margin: 0;
+  font-size: 14px;
+  color: #e0e0e0;
+}
+
+.oauth-waiting-hint {
+  margin: 2px 0 0 0;
+  font-size: 12px;
+  color: #999;
+}
+
+.oauth-waiting-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+/* Manual Section */
+.oauth-manual-section {
+  margin-top: 16px;
+  padding: 16px;
+  background: rgba(0, 0, 0, 0.2);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 8px;
+  animation: oauth-slide-down 0.2s ease-out;
+}
+
+.oauth-manual-section h5 {
+  margin: 0 0 8px 0;
+  font-size: 14px;
+  color: #f0f0f0;
+}
+
+.oauth-manual-hint {
+  font-size: 12px;
+  color: #aaa;
+  margin: 0 0 10px 0;
+}
+
+.oauth-manual-input-row {
+  display: flex;
+  gap: 8px;
+}
+
+.oauth-manual-input-row .oauth-input {
+  flex: 1;
+}
+
+/* Connected State */
+.oauth-connected-section {
+  padding: 12px 0;
+}
+
+.oauth-connected-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 14px;
+  background: rgba(46, 125, 50, 0.15);
+  border: 1px solid rgba(46, 125, 50, 0.3);
+  border-radius: 20px;
+  font-size: 13px;
+  color: #81c784;
+  font-weight: 500;
+  margin-bottom: 12px;
+}
+
+.oauth-connected-dot {
+  width: 8px;
+  height: 8px;
+  background: #4caf50;
+  border-radius: 50%;
+  animation: oauth-pulse 2s ease-in-out infinite;
+}
+
+@keyframes oauth-pulse {
+
+  0%,
+  100% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0.4;
+  }
+}
+
+.oauth-connected-details {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+.oauth-detail-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 13px;
+  padding: 4px 0;
+}
+
+.oauth-detail-label {
+  color: #999;
+}
+
+.oauth-detail-value {
+  color: #e0e0e0;
+  font-weight: 500;
+}
+
+.oauth-expired {
+  color: #e57373;
+}
+
+.oauth-connected-actions {
+  display: flex;
+  gap: 8px;
+}
+
+/* Info Box */
+.oauth-info-box {
+  margin-top: 4px;
+  padding: 12px 16px;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(255, 255, 255, 0.04);
+  border-radius: 8px;
+}
+
+.oauth-info-box h5 {
+  margin: 0 0 8px 0;
+  font-size: 13px;
+  color: #ccc;
+}
+
+.oauth-info-box ul {
+  margin: 0;
+  padding-left: 20px;
+  color: #aaa;
+  font-size: 12px;
+  line-height: 1.8;
+}
+
+.oauth-info-box li {
+  margin: 0;
+}
+
+.oauth-info-box strong {
+  color: #ccc;
+}

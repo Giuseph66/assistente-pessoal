@@ -5,7 +5,7 @@ import {
   ImageTemplate,
   Workflow,
   ExecutionStatus,
-} from '@ricky/shared';
+} from '@neo/shared';
 import { WorkflowEditor } from '../../components/Automation/WorkflowEditor';
 import { MappingOverlay } from '../../components/Automation/MappingOverlay';
 import { WorkflowSettings } from '../../components/AutomationFlow/WorkflowSettings';
@@ -1169,12 +1169,6 @@ export function AutomationSettings(): JSX.Element {
             onClick={() => setActiveTab('mappings')}
           >
             Mapeamentos
-          </button>
-          <button
-            className={`provider-tab ${activeTab === 'workflows' ? 'active' : ''}`}
-            onClick={() => setActiveTab('workflows')}
-          >
-            Workflows
           </button>
           <button
             className={`provider-tab ${activeTab === 'flow' ? 'active' : ''}`}

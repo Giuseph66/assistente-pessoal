@@ -1,5 +1,5 @@
 import { spawn } from 'child_process';
-import { OCRBlock } from '@ricky/shared';
+import { OCRBlock } from '@neo/shared';
 import { OCRProvider, OCRRequest } from './OCRProvider';
 
 const DEFAULT_LANG = 'eng+por';

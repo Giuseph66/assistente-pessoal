@@ -1,6 +1,6 @@
 import { EventEmitter } from 'events';
 import { BrowserWindow } from 'electron';
-import { getLogger } from '@ricky/logger';
+import { getLogger } from '@neo/logger';
 import { SystemAudioCapture } from './SystemAudioCapture';
 
 const logger = getLogger();

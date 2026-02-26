@@ -33,7 +33,50 @@ import {
   FlowExecutionStatus,
   FlowExecutionNodeStartedEvent,
   FlowExecutionNodeFinishedEvent,
-} from '@ricky/shared';
+} from '@neo/shared';
+
+type NotificationLevel = 'info' | 'warn' | 'error';
+type NotificationSource = 'app' | 'system';
+
+type AppNotificationRecord = {
+  id: string;
+  createdAt: number;
+  source: NotificationSource;
+  os: string;
+  appName?: string | null;
+  title: string;
+  body: string;
+  level: NotificationLevel;
+  category?: string | null;
+  meta?: Record<string, unknown> | null;
+  raw?: Record<string, unknown> | null;
+};
+
+type AppNotificationFilters = {
+  search?: string;
+  source?: NotificationSource | 'all';
+  level?: NotificationLevel | 'all';
+  category?: string;
+  appName?: string;
+  from?: number;
+  to?: number;
+  page?: number;
+  pageSize?: number;
+};
+
+type AppNotificationSettings = {
+  storeAppNotifications: boolean;
+  captureSystemNotifications: boolean;
+  retentionDays: 7 | 30 | 90;
+  blockedApps: string[];
+  collector: {
+    platform: string;
+    supported: boolean;
+    enabled: boolean;
+    mode: 'official' | 'experimental' | 'planned' | 'unsupported';
+    lastError: string | null;
+  };
+};
 
 declare global {
   interface Window {
@@ -227,6 +270,75 @@ declare global {
         onNodeStarted: (cb: (data: FlowExecutionNodeStartedEvent) => void) => () => void;
         onNodeFinished: (cb: (data: FlowExecutionNodeFinishedEvent) => void) => () => void;
       };
+    };
+    auth: {
+      loginOpenAI: (profileId?: string, label?: string) => Promise<{ success: boolean; error?: string; authorizeUrl?: string }>;
+      finishLoginManual: (profileId: string, codeOrUrl: string, label?: string) => Promise<{ success: boolean; error?: string }>;
+      cancelLogin: (profileId: string) => Promise<{ success: boolean }>;
+      logout: (profileId: string) => Promise<{ success: boolean; error?: string }>;
+      getAccessToken: (profileId?: string) => Promise<{ success: boolean; token?: string; error?: string }>;
+      getProfiles: () => Promise<Array<{
+        profileId: string;
+        label: string;
+        provider: string;
+        expiresAt: number;
+        accountId?: string;
+        isActive: boolean;
+        isExpired: boolean;
+        isEnabled: boolean;
+      }>>;
+      setActiveProfile: (profileId: string) => Promise<{ success: boolean; error?: string }>;
+      setProfileEnabled: (profileId: string, isEnabled: boolean) => Promise<{ success: boolean; error?: string }>;
+      getStatus: (profileId?: string) => Promise<{
+        connected: boolean;
+        profileId: string | null;
+        expiresAt?: number;
+        accountId?: string;
+        flowStatus: 'idle' | 'awaiting_callback' | 'exchanging_code' | 'connected' | 'error';
+      }>;
+      getConfig: () => Promise<{
+        clientId: string;
+        scopes: string[];
+        authorizeUrl: string;
+        redirectUri: string;
+      }>;
+      updateConfig: (patch: Record<string, any>) => Promise<{ success: boolean; clientId?: string; scopes?: string[]; error?: string }>;
+      onStatusChanged: (cb: (event: {
+        status: 'idle' | 'awaiting_callback' | 'exchanging_code' | 'connected' | 'error';
+        profileId?: string;
+        error?: string;
+        authorizeUrl?: string;
+      }) => void) => () => void;
+    };
+    notifications: {
+      list: (filters?: AppNotificationFilters) => Promise<{
+        items: AppNotificationRecord[];
+        total: number;
+        page: number;
+        pageSize: number;
+        totalPages: number;
+      }>;
+      get: (id: string) => Promise<AppNotificationRecord | null>;
+      clear: (payload?: { days?: number; from?: number; to?: number }) => Promise<{ success: boolean; deleted: number }>;
+      delete: (id: string) => Promise<{ success: boolean }>;
+      export: (format: 'json' | 'csv', filters?: AppNotificationFilters) => Promise<{
+        success: boolean;
+        canceled?: boolean;
+        filePath?: string;
+        count?: number;
+        format?: 'json' | 'csv';
+      }>;
+      getSettings: () => Promise<AppNotificationSettings>;
+      setSettings: (patch: Partial<Omit<AppNotificationSettings, 'collector'>>) => Promise<AppNotificationSettings>;
+      notify: (payload: {
+        title: string;
+        body?: string;
+        level?: NotificationLevel;
+        category?: string;
+        meta?: Record<string, unknown>;
+      }) => Promise<{ success: boolean; saved?: AppNotificationRecord | null; error?: string }>;
+      onUpdated: (cb: (event: AppNotificationRecord) => void) => () => void;
+      onSettingsUpdated: (cb: (event: AppNotificationSettings) => void) => () => void;
     };
     electron: {
       ipcRenderer: {

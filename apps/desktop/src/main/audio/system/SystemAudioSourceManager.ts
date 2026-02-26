@@ -1,7 +1,7 @@
 import { execFile } from 'child_process';
 import { promisify } from 'util';
-import { SystemAudioSourceInfo } from '@ricky/shared';
-import { getLogger } from '@ricky/logger';
+import { SystemAudioSourceInfo } from '@neo/shared';
+import { getLogger } from '@neo/logger';
 
 const execFileAsync = promisify(execFile);
 const logger = getLogger();

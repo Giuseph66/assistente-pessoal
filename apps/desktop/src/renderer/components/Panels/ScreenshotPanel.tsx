@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Screenshot } from '@ricky/shared';
+import { Screenshot } from '@neo/shared';
 
 export function ScreenshotPanel(): JSX.Element {
   const [latestScreenshot, setLatestScreenshot] = useState<Screenshot | null>(null);

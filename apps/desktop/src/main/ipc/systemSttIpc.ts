@@ -1,5 +1,5 @@
 import { BrowserWindow, ipcMain } from 'electron';
-import { STTFinalEvent, STTPartialEvent, STTStatus } from '@ricky/shared';
+import { STTFinalEvent, STTPartialEvent, STTStatus } from '@neo/shared';
 import { SystemSttController } from '../stt/SystemSttController';
 
 const broadcast = (channel: string, payload: any) => {

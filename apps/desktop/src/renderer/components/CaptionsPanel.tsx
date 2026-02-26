@@ -1,4 +1,4 @@
-import { STTFinalEvent, STTPartialEvent } from '@ricky/shared';
+import { STTFinalEvent, STTPartialEvent } from '@neo/shared';
 import { useSttState } from '../store/sttStore';
 
 type Props = {

@@ -17,8 +17,8 @@ import {
     getLastTextHighlightTranscription
 } from './text-highlight-controller'
 import { getHotkeysManager } from './hotkeys'
-import { getConfigManager } from '@ricky/config'
-import { getLogger } from '@ricky/logger'
+import { getConfigManager } from '@neo/config'
+import { getLogger } from '@neo/logger'
 import { DatabaseManager } from './database'
 import { Gateway } from './gateway'
 import { getEngineManager } from './engine-manager'
@@ -35,6 +35,10 @@ import { registerTranslationIpc } from './ipc/translationIpc'
 import { registerSessionIpc } from './ipc/sessionIpc'
 import { registerAutomationIpc } from './ipc/automationIpc'
 import { registerAutomationFlowIpc } from './ipc/automationFlowIpc'
+import { registerAuthIpc } from './ipc/authIpc'
+import { NotificationStore } from './notifications/notification-store'
+import { NotificationCenter } from './notifications/notification-center'
+import { registerNotificationsIpc } from './notifications/notifications-ipc'
 import { getModelManager, getSttController } from './stt/sttService'
 import { SystemAudioSourceManager } from './audio/system/SystemAudioSourceManager'
 import { RecorderService } from './audio/recording/RecorderService'
@@ -92,6 +96,8 @@ setupErrorHandlers();
 // Initialize logger
 const logger = getLogger();
 let db: DatabaseManager;
+let notificationStore: NotificationStore | null = null;
+let notificationCenter: NotificationCenter | null = null;
 
 // This method will be called when Electron has finished
 // initialization and is ready to create browser windows.
@@ -107,6 +113,12 @@ app.whenReady().then(async () => {
     // Initialize database
     db = new DatabaseManager();
     logger.info('Database initialized');
+
+    // Initialize notification center persistence/service
+    notificationStore = new NotificationStore();
+    notificationCenter = new NotificationCenter(notificationStore);
+    await notificationCenter.start();
+    logger.info({ path: notificationStore.getPath() }, 'Notification center initialized');
 
     // Initialize WebSocket gateway
     const gateway = new Gateway(8788);
@@ -533,8 +545,15 @@ app.whenReady().then(async () => {
 
     registerScreenshotIpc();
 
-    // Initial view: only HUD
+    // Initial view: HUD
     overlayManager.createHUDWindow();
+
+    // Dev helper: optionally open Settings automatically to make development visible
+    if (is.dev && process.env.NEO_DEV_OPEN_SETTINGS === '1') {
+        setTimeout(() => {
+            overlayManager.createSettingsWindow();
+        }, 250);
+    }
 
     // Initialize STT pipeline + IPC
     const modelManager = getModelManager();
@@ -561,12 +580,21 @@ app.whenReady().then(async () => {
 
     // Initialize Automation IPC
     registerAutomationIpc();
-    registerAutomationFlowIpc();
+    registerAutomationFlowIpc(db);
+
+    // Initialize Auth IPC (OAuth PKCE)
+    registerAuthIpc();
+
+    // Initialize Notifications IPC
+    if (notificationStore && notificationCenter) {
+        registerNotificationsIpc(notificationStore, notificationCenter);
+    }
 
     // Initialize default AI providers in database
     try {
         db.saveAIProvider({ id: 'gemini', display_name: 'Google Gemini', base_url: 'https://generativelanguage.googleapis.com' });
-        db.saveAIProvider({ id: 'openai', display_name: 'OpenAI', base_url: 'https://api.openai.com' });
+        db.saveAIProvider({ id: 'openai', display_name: 'OpenAI (API Key)', base_url: 'https://api.openai.com' });
+        db.saveAIProvider({ id: 'openai-codex', display_name: 'OpenAI (OAuth Codex)', base_url: 'https://chatgpt.com/backend-api/codex' });
         logger.info('Default AI providers initialized');
     } catch (error) {
         logger.warn({ err: error }, 'Failed to initialize default AI providers (may already exist)');
@@ -812,6 +840,14 @@ app.on('will-quit', async (event) => {
         })
     );
 
+    if (notificationCenter) {
+        shutdownPromises.push(
+            notificationCenter.stop().catch((error) => {
+                logger.warn({ err: error }, 'Error stopping notification center during shutdown');
+            })
+        );
+    }
+
     try {
         // Aguardar até 5 segundos para o encerramento dos serviços
         await Promise.race([
@@ -829,4 +865,15 @@ app.on('will-quit', async (event) => {
     }
 
     logger.info('Application quitting');
+
+    if (notificationStore) {
+        try {
+            notificationStore.close();
+        } catch (error) {
+            logger.warn({ err: error }, 'Error closing notifications database');
+        } finally {
+            notificationStore = null;
+            notificationCenter = null;
+        }
+    }
 })

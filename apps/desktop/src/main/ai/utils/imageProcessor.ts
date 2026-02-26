@@ -2,7 +2,7 @@ import sharp from 'sharp';
 import { join } from 'path';
 import { writeFile, mkdir } from 'fs/promises';
 import { existsSync } from 'fs';
-import { getLogger } from '@ricky/logger';
+import { getLogger } from '@neo/logger';
 import { app } from 'electron';
 
 const logger = getLogger();

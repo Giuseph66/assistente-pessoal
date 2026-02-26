@@ -107,6 +107,12 @@
   color: rgba(255, 255, 255, 0.85);
 }
 
+.screenshot-selector__btn.secondary {
+  background: rgba(14, 116, 144, 0.28);
+  border: 1px solid rgba(34, 211, 238, 0.45);
+  color: rgba(207, 250, 254, 0.95);
+}
+
 .screenshot-selector__btn.icon {
   padding: 8px 12px;
   background: rgba(124, 58, 237, 0.2);

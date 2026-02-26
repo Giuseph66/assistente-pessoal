@@ -1,8 +1,9 @@
 import { VisionProvider } from './providers/VisionProvider';
 import { GeminiProvider } from './providers/GeminiProvider';
 import { OpenAIProvider } from './providers/OpenAIProvider';
-import { AIProviderId } from '@ricky/shared';
-import { getLogger } from '@ricky/logger';
+import { OpenAICodexProvider } from './providers/OpenAICodexProvider';
+import { AIProviderId } from '@neo/shared';
+import { getLogger } from '@neo/logger';
 
 const logger = getLogger();
 
@@ -23,6 +24,7 @@ export class AIProviderManager {
   private registerDefaultProviders(): void {
     this.registerProvider(new GeminiProvider());
     this.registerProvider(new OpenAIProvider());
+    this.registerProvider(new OpenAICodexProvider());
     logger.info('Registered default AI providers');
   }
 
@@ -69,5 +71,4 @@ export function getAIProviderManager(): AIProviderManager {
   }
   return providerManager;
 }
-
 

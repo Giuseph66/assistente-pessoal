@@ -15,8 +15,9 @@ import {
   AnalyzeChatResponse,
   AIProviderId,
 } from '@ricky/shared';
-import { getLogger } from '@ricky/logger';
+import { getLogger } from '@neo/logger';
 import { existsSync } from 'fs';
+import { getOAuthController } from '../auth/openaiOAuth';
 
 const logger = getLogger();
 
@@ -34,7 +35,7 @@ export class AIService {
     this.db = db;
     this.keyStorage = keyStorage;
     this.keyPool = new ApiKeyPool(db, keyStorage, initialConfig?.fallbackCooldownMinutes || 10);
-    
+
     // Configuração padrão
     this.config = {
       providerId: initialConfig?.providerId || 'gemini',
@@ -50,6 +51,8 @@ export class AIService {
       fallbackMaxAttempts: initialConfig?.fallbackMaxAttempts || 3,
       fallbackCooldownMinutes: initialConfig?.fallbackCooldownMinutes || 10,
     };
+
+    this.ensureProviderExists(this.config.providerId);
   }
 
   /**
@@ -73,6 +76,7 @@ export class AIService {
     }
 
     this.config = { ...this.config, ...normalizedPatch };
+    this.ensureProviderExists(this.config.providerId);
     this.keyPool = new ApiKeyPool(this.db, this.keyStorage, this.config.fallbackCooldownMinutes);
   }
 
@@ -195,7 +199,7 @@ export class AIService {
         session_id: sessionId,
         provider_id: this.config.providerId,
         model_name: this.config.modelName,
-        api_key_id: response.apiKeyIdUsed,
+        api_key_id: this.toPersistedApiKeyId(response.apiKeyIdUsed),
         status: 'success',
         duration_ms: duration,
       });
@@ -309,7 +313,7 @@ export class AIService {
         session_id: sessionId,
         provider_id: this.config.providerId,
         model_name: this.config.modelName,
-        api_key_id: response.apiKeyIdUsed,
+        api_key_id: this.toPersistedApiKeyId(response.apiKeyIdUsed),
         status: 'success',
         duration_ms: duration,
       });
@@ -369,11 +373,26 @@ export class AIService {
 
     let lastError: Error | null = null;
     const maxAttempts = this.config.fallbackMaxAttempts;
+    let skipOAuth = this.shouldSkipOAuthForOpenAIModelCalls();
 
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
       // Obtém próxima key disponível
-      const apiKey = this.keyPool.getNextKey(this.config.providerId);
+      const apiKey = await this.keyPool.getNextKeyAsync(this.config.providerId, {
+        skipOAuth,
+      });
       if (!apiKey) {
+        const oauthFallback = await this.tryAnalyzeImageWithOpenAIOAuthFallback(
+          providerManager,
+          image,
+          messages,
+          requestOptions
+        );
+        if (oauthFallback) {
+          return oauthFallback;
+        }
+
+        const providerError = this.getNoAvailableApiKeyError();
+        if (providerError) throw providerError;
         const keys = this.db.getAIApiKeys(this.config.providerId);
         const hasInsufficientQuota = keys.some((k) => k.last_error_code === 'insufficient_quota');
         if (hasInsufficientQuota) {
@@ -415,11 +434,13 @@ export class AIService {
         const response = await provider.analyzeImage(visionRequest, apiKey.key);
 
         // Marca sucesso
-        this.keyPool.markSuccess(apiKey.id);
+        if (apiKey.id > 0) {
+          this.keyPool.markSuccess(apiKey.id);
+        }
 
         return {
           ...response,
-          apiKeyIdUsed: apiKey.id,
+          apiKeyIdUsed: apiKey.id > 0 ? apiKey.id : undefined,
         };
       } catch (error: any) {
         lastError = error;
@@ -432,7 +453,23 @@ export class AIService {
         };
 
         // Marca falha
-        this.keyPool.markFailure(apiKey.id, apiError);
+        if (apiKey.id > 0) {
+          this.keyPool.markFailure(apiKey.id, apiError);
+        }
+
+        if (this.shouldFallbackFromOAuthToManual(apiKey, error)) {
+          skipOAuth = true;
+          logger.warn(
+            {
+              providerId: this.config.providerId,
+              attempt,
+              statusCode: error.statusCode,
+              error: this.sanitizeError(error),
+            },
+            'OpenAI OAuth token rejected for model calls; trying manual API key fallback'
+          );
+          continue;
+        }
 
         // Se é erro não retentável, para imediatamente
         if (error.statusCode === 401 || error.statusCode === 403) {
@@ -466,10 +503,24 @@ export class AIService {
 
     let lastError: Error | null = null;
     const maxAttempts = this.config.fallbackMaxAttempts;
+    let skipOAuth = this.shouldSkipOAuthForOpenAIModelCalls();
 
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
-      const apiKey = this.keyPool.getNextKey(this.config.providerId);
+      const apiKey = await this.keyPool.getNextKeyAsync(this.config.providerId, {
+        skipOAuth,
+      });
       if (!apiKey) {
+        const oauthFallback = await this.tryAnalyzeTextWithOpenAIOAuthFallback(
+          providerManager,
+          messages,
+          requestOptions
+        );
+        if (oauthFallback) {
+          return oauthFallback;
+        }
+
+        const providerError = this.getNoAvailableApiKeyError();
+        if (providerError) throw providerError;
         const keys = this.db.getAIApiKeys(this.config.providerId);
         const hasInsufficientQuota = keys.some((k) => k.last_error_code === 'insufficient_quota');
         if (hasInsufficientQuota) {
@@ -502,11 +553,13 @@ export class AIService {
 
         const response = await provider.analyzeText(chatRequest, apiKey.key);
 
-        this.keyPool.markSuccess(apiKey.id);
+        if (apiKey.id > 0) {
+          this.keyPool.markSuccess(apiKey.id);
+        }
 
         return {
           ...response,
-          apiKeyIdUsed: apiKey.id,
+          apiKeyIdUsed: apiKey.id > 0 ? apiKey.id : undefined,
         };
       } catch (error: any) {
         lastError = error;
@@ -517,7 +570,23 @@ export class AIService {
           message: error.message || 'Unknown error',
         };
 
-        this.keyPool.markFailure(apiKey.id, apiError);
+        if (apiKey.id > 0) {
+          this.keyPool.markFailure(apiKey.id, apiError);
+        }
+
+        if (this.shouldFallbackFromOAuthToManual(apiKey, error)) {
+          skipOAuth = true;
+          logger.warn(
+            {
+              providerId: this.config.providerId,
+              attempt,
+              statusCode: error.statusCode,
+              error: this.sanitizeError(error),
+            },
+            'OpenAI OAuth token rejected for chat calls; trying manual API key fallback'
+          );
+          continue;
+        }
 
         if (error.statusCode === 401 || error.statusCode === 403) {
           throw error;
@@ -583,6 +652,165 @@ export class AIService {
     return message;
   }
 
+  private shouldFallbackFromOAuthToManual(apiKey: { id: number; source?: 'oauth' | 'manual' }, error: any): boolean {
+    if (this.config.providerId !== 'openai') {
+      return false;
+    }
+
+    const isOAuthToken = apiKey.source === 'oauth' || apiKey.id < 0;
+    if (!isOAuthToken) return false;
+
+    const statusCode = Number(error?.statusCode);
+    if (statusCode !== 401 && statusCode !== 403) {
+      return false;
+    }
+
+    return true;
+  }
+
+  private shouldSkipOAuthForOpenAIModelCalls(): boolean {
+    // OpenAI API key provider usa somente chaves manuais.
+    if (this.config.providerId === 'openai') {
+      return true;
+    }
+    return false;
+  }
+
+  private getNoAvailableApiKeyError(): Error | null {
+    if (this.config.providerId === 'openai' && this.hasActiveOpenAIOAuthProfile()) {
+      return new Error(
+        'Nenhuma API key manual da OpenAI encontrada. OAuth já está conectado; selecione o provider OpenAI OAuth (Codex) em Configurações > API e Modelos.'
+      );
+    }
+
+    if (this.config.providerId === 'openai') {
+      return new Error(
+        'Nenhuma API key manual da OpenAI disponível. Adicione uma chave em Configurações > API e Modelos ou conecte via OAuth.'
+      );
+    }
+
+    if (this.config.providerId === 'openai-codex') {
+      return new Error(
+        'OpenAI OAuth nao conectado. Faça login em Configuracoes > API e Modelos > OpenAI.'
+      );
+    }
+    return null;
+  }
+
+  private hasActiveOpenAIOAuthProfile(): boolean {
+    try {
+      const controller = getOAuthController();
+      const profiles = controller.getTokenStore().listProfiles();
+      return profiles.some((profile) => profile.isActive && profile.isEnabled && !profile.isExpired);
+    } catch {
+      return false;
+    }
+  }
+
+  private async tryAnalyzeImageWithOpenAIOAuthFallback(
+    providerManager: ReturnType<typeof getAIProviderManager>,
+    image: {
+      base64Raw: string;
+      base64DataUrl: string;
+      mimeType: string;
+      sourcePath: string;
+    },
+    messages: VisionRequest['messages'],
+    requestOptions?: AnalyzeScreenshotRequest['options']
+  ): Promise<(VisionResponse & { apiKeyIdUsed?: number }) | null> {
+    if (this.config.providerId !== 'openai' || !this.hasActiveOpenAIOAuthProfile()) {
+      return null;
+    }
+
+    const codexProvider = providerManager.getProvider('openai-codex');
+    if (!codexProvider) {
+      return null;
+    }
+
+    const oauthKey = await this.keyPool.getNextKeyAsync('openai-codex');
+    if (!oauthKey) {
+      return null;
+    }
+
+    const resolvedMaxTokens = this.resolveMaxTokens(requestOptions?.maxTokens);
+    const options: VisionRequest['options'] = {
+      temperature: requestOptions?.temperature ?? 0.7,
+      timeoutMs: this.config.timeoutMs,
+      modelName: this.config.modelName,
+    };
+    if (typeof resolvedMaxTokens === 'number') {
+      options.maxTokens = resolvedMaxTokens;
+    }
+
+    const visionRequest: VisionRequest = {
+      image: {
+        base64Raw: image.base64Raw,
+        base64DataUrl: image.base64DataUrl,
+        mimeType: image.mimeType,
+        originalPath: image.sourcePath,
+      },
+      messages,
+      options,
+    };
+
+    logger.warn(
+      { providerId: this.config.providerId, fallbackProviderId: 'openai-codex' },
+      'No manual OpenAI key available; using OAuth Codex fallback for image analysis'
+    );
+
+    const response = await codexProvider.analyzeImage(visionRequest, oauthKey.key);
+    return {
+      ...response,
+      apiKeyIdUsed: oauthKey.id > 0 ? oauthKey.id : undefined,
+    };
+  }
+
+  private async tryAnalyzeTextWithOpenAIOAuthFallback(
+    providerManager: ReturnType<typeof getAIProviderManager>,
+    messages: VisionRequest['messages'],
+    requestOptions?: AnalyzeChatRequest['options']
+  ): Promise<(VisionResponse & { apiKeyIdUsed?: number }) | null> {
+    if (this.config.providerId !== 'openai' || !this.hasActiveOpenAIOAuthProfile()) {
+      return null;
+    }
+
+    const codexProvider = providerManager.getProvider('openai-codex');
+    if (!codexProvider) {
+      return null;
+    }
+
+    const oauthKey = await this.keyPool.getNextKeyAsync('openai-codex');
+    if (!oauthKey) {
+      return null;
+    }
+
+    const resolvedMaxTokens = this.resolveMaxTokens(requestOptions?.maxTokens);
+    const options: VisionRequest['options'] = {
+      temperature: requestOptions?.temperature ?? 0.7,
+      timeoutMs: this.config.timeoutMs,
+      modelName: this.config.modelName,
+    };
+    if (typeof resolvedMaxTokens === 'number') {
+      options.maxTokens = resolvedMaxTokens;
+    }
+
+    logger.warn(
+      { providerId: this.config.providerId, fallbackProviderId: 'openai-codex' },
+      'No manual OpenAI key available; using OAuth Codex fallback for chat analysis'
+    );
+
+    const response = await codexProvider.analyzeText({ messages, options }, oauthKey.key);
+    return {
+      ...response,
+      apiKeyIdUsed: oauthKey.id > 0 ? oauthKey.id : undefined,
+    };
+  }
+
+  private toPersistedApiKeyId(apiKeyId?: number): number | undefined {
+    if (typeof apiKeyId !== 'number') return undefined;
+    return apiKeyId > 0 ? apiKeyId : undefined;
+  }
+
   private getModelMaxTokens(): number | null {
     try {
       const catalog = loadModelCatalog();
@@ -609,5 +837,37 @@ export class AIService {
       return Math.floor(modelMaxTokens);
     }
     return undefined;
+  }
+
+  private ensureProviderExists(providerId: AIProviderId): void {
+    try {
+      if (providerId === 'gemini') {
+        this.db.saveAIProvider({
+          id: 'gemini',
+          display_name: 'Google Gemini',
+          base_url: 'https://generativelanguage.googleapis.com',
+        });
+        return;
+      }
+
+      if (providerId === 'openai') {
+        this.db.saveAIProvider({
+          id: 'openai',
+          display_name: 'OpenAI (API Key)',
+          base_url: 'https://api.openai.com',
+        });
+        return;
+      }
+
+      if (providerId === 'openai-codex') {
+        this.db.saveAIProvider({
+          id: 'openai-codex',
+          display_name: 'OpenAI (OAuth Codex)',
+          base_url: 'https://chatgpt.com/backend-api/codex',
+        });
+      }
+    } catch (error) {
+      logger.warn({ err: error, providerId }, 'Failed to ensure AI provider exists');
+    }
   }
 }

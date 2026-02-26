@@ -1,5 +1,5 @@
 import { BrowserWindow, ipcMain, app } from 'electron';
-import { TranslationStartOptions, TranslationResult, TranslationStatus } from '@ricky/shared';
+import { TranslationStartOptions, TranslationResult, TranslationStatus } from '@neo/shared';
 import { ScreenTranslateService } from '../services/translation/ScreenTranslateService';
 import { getOverlayManager } from '../overlay';
 import { writeFile } from 'fs/promises';

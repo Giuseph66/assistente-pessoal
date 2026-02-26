@@ -1,6 +1,6 @@
 import { WebSocketServer, WebSocket } from 'ws';
 import { existsSync } from 'fs';
-import { getLogger } from '@ricky/logger';
+import { getLogger } from '@neo/logger';
 import { getOverlayManager } from './overlay';
 import { DatabaseManager } from './database';
 

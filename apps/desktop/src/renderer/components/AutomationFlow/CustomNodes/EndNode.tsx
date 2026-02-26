@@ -1,4 +1,5 @@
 import { Handle, Position } from '@xyflow/react';
+import { FlowIcon } from '../FlowIcons';
 
 export function EndNode({ data }: { data: any }) {
   const isRunning = data.isRunning;
@@ -21,10 +22,9 @@ export function EndNode({ data }: { data: any }) {
         color: '#ef4444',
         letterSpacing: '0.05em'
       }}>
-        <span style={{ fontSize: '18px' }}>■</span>
+        <FlowIcon name="stopSquare" size={18} />
         FIM
       </div>
     </div>
   );
 }
-

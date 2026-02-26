@@ -1,11 +1,11 @@
-import { getLogger } from '@ricky/logger';
-import { getConfigManager } from '@ricky/config';
+import { getLogger } from '@neo/logger';
+import { getConfigManager } from '@neo/config';
 import { getTextHighlightOverlayManager } from './text-highlight-overlay';
 import { getOverlayManager } from './overlay';
 import { DatabaseManager } from './database';
 import { captureAreaInteractiveConfirmed, captureScreenshot } from './screenshot';
 import { getAIService } from './ai/AIServiceManager';
-import { AIProviderId } from '@ricky/shared';
+import { AIProviderId } from '@neo/shared';
 
 export type TextHighlightMode = 'local' | 'ai';
 export type TextHighlightCaptureMode = 'fullscreen' | 'area';

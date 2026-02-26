@@ -1,4 +1,4 @@
-import { SubtitleSegment } from '@ricky/shared';
+import { SubtitleSegment } from '@neo/shared';
 
 const pad = (value: number, size: number): string => String(value).padStart(size, '0');
 

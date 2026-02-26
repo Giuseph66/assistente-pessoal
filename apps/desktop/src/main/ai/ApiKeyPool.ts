@@ -1,7 +1,8 @@
 import { DatabaseManager } from '../database';
 import { KeyStorage } from './storage/KeyStorage';
-import { getLogger } from '@ricky/logger';
-import { AIApiKey, AIProviderId } from '@ricky/shared';
+import { getLogger } from '@neo/logger';
+import { AIApiKey, AIProviderId } from '@neo/shared';
+import { getOAuthController } from '../auth/openaiOAuth';
 
 const logger = getLogger();
 
@@ -17,6 +18,7 @@ export interface ApiKey {
   failureCount: number;
   lastErrorCode?: string;
   lastUsedAt?: number;
+  source?: 'oauth' | 'manual';
 }
 
 export interface ApiError {
@@ -49,7 +51,7 @@ export class ApiKeyPool {
    */
   getNextKey(providerId: string): ApiKey | null {
     const availableKeys = this.getAvailableKeys(providerId);
-    
+
     if (availableKeys.length === 0) {
       logger.warn({ providerId }, 'No available keys for provider');
       return null;
@@ -65,12 +67,63 @@ export class ApiKeyPool {
   }
 
   /**
+   * Obtém a próxima key disponível para um provider, com suporte automático
+   * a tokens OAuth para providers suportados (ex: OpenAI).
+   */
+  async getNextKeyAsync(
+    providerId: string,
+    options?: { skipOAuth?: boolean }
+  ): Promise<ApiKey | null> {
+    const skipOAuth = options?.skipOAuth === true;
+
+    if (providerId === 'openai-codex' && !skipOAuth) {
+      try {
+        const controller = getOAuthController();
+        const profiles = controller.getTokenStore().listProfiles();
+        const activeProfile = profiles.find(p => p.isActive && p.isEnabled && !p.isExpired);
+
+        if (activeProfile) {
+          const accessToken = await controller.getAccessToken(activeProfile.profileId);
+          if (accessToken) {
+            logger.debug({ providerId, profileId: activeProfile.profileId }, 'Selected OAuth access token');
+            // Return a virtual ApiKey wrapper around the OAuth token
+            return {
+              id: -1, // Virtual ID
+              providerId: providerId as AIProviderId,
+              key: accessToken,
+              alias: `OAuth: ${activeProfile.label}`,
+              last4: accessToken.substring(accessToken.length - 4),
+              status: 'active',
+              successCount: 1,
+              failureCount: 0,
+              source: 'oauth',
+            };
+          }
+        }
+      } catch (err: any) {
+        logger.warn({ err }, 'Failed to fetch OAuth token');
+      }
+    }
+
+    if (providerId === 'openai-codex') {
+      return null;
+    }
+
+    // Fallback normal para chaves manuais (banco de dados)
+    const manualKey = this.getNextKey(providerId);
+    if (manualKey) {
+      return { ...manualKey, source: 'manual' };
+    }
+    return null;
+  }
+
+  /**
    * Obtém todas as keys disponíveis (active e fora de cooldown)
    */
   getAvailableKeys(providerId: string): ApiKey[] {
     const now = Date.now();
     const dbKeys = this.db.getAIApiKeys(providerId);
-    
+
     const available: ApiKey[] = [];
 
     for (const dbKey of dbKeys) {
@@ -177,8 +230,8 @@ export class ApiKeyPool {
     const newStatus: 'active' | 'cooldown' | 'disabled' = shouldCooldown
       ? 'cooldown'
       : error.statusCode === 401 || error.statusCode === 403
-      ? 'disabled' // Keys inválidas são desabilitadas permanentemente
-      : dbKey.status;
+        ? 'disabled' // Keys inválidas são desabilitadas permanentemente
+        : dbKey.status;
 
     this.db.updateAIApiKey(keyId, {
       failure_count: dbKey.failure_count + 1,
@@ -261,7 +314,7 @@ export class ApiKeyPool {
     try {
       const decryptedKey = this.keyStorage.decrypt(dbKey.encrypted_key);
       const success = await testFn(decryptedKey);
-      
+
       if (success) {
         this.markSuccess(keyId);
       } else {
@@ -275,5 +328,3 @@ export class ApiKeyPool {
     }
   }
 }
-
-

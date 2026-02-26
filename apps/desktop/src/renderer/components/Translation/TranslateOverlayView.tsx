@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { TranslationBlock } from '@ricky/shared';
+import { TranslationBlock } from '@neo/shared';
 
 type Props = {
   imageUrl: string | null;

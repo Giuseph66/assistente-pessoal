@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { TranslationResult, TranslationStatus } from '@ricky/shared';
+import { TranslationResult, TranslationStatus } from '@neo/shared';
 
 const LANG_OPTIONS = [
   { value: 'auto', label: 'Auto' },

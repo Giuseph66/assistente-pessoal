@@ -1,5 +1,5 @@
-import { VisionProvider, VisionRequest, VisionResponse, ChatRequest, ModelInfo, AIProviderId } from '@ricky/shared';
-import { getLogger } from '@ricky/logger';
+import { VisionProvider, VisionRequest, VisionResponse, ChatRequest, ModelInfo, AIProviderId } from '@neo/shared';
+import { getLogger } from '@neo/logger';
 
 const logger = getLogger();
 

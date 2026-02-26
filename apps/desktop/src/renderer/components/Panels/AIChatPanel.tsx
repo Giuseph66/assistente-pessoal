@@ -5,7 +5,7 @@ import {
   STTPartialEvent,
   STTFinalEvent,
   SystemAudioSourceInfo,
-} from '@ricky/shared';
+} from '@neo/shared';
 import { GeminiIcon, OpenAIIcon, OllamaIcon, ProviderIcon } from '../Icons';
 import { useSharedInputValue } from '../../store/sharedInputStore';
 
@@ -199,6 +199,7 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ sessionId }) => {
       case 'gemini':
         return <GeminiIcon size={18} />;
       case 'openai':
+      case 'openai-codex':
         return (
           <ProviderIcon size={18} viewBox="0 0 24 24">
             <defs>

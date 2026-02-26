@@ -1,7 +1,6 @@
 import { mouse, keyboard, screen, Button, Key, loadImage, centerOf, Region, Point, Image } from '@nut-tree-fork/nut-js';
-import { clipboard } from 'electron';
-import { getLogger } from '@ricky/logger';
-import sharp from 'sharp';
+import { clipboard, nativeImage } from 'electron';
+import { getLogger } from '@neo/logger';
 
 // Tipo local para MouseButton (evita problemas de importação)
 type MouseButton = 'left' | 'right' | 'middle';
@@ -193,16 +192,18 @@ export class AutomationService {
         image = await screen.grab();
       }
       logger.debug({ hasRegion: !!region }, 'Screenshot captured');
-      // Converter Image para Buffer PNG usando sharp
+      // Converter imagem RAW para PNG usando nativeImage para evitar crashes do libvips/sharp
       const rawData = await image.toRGB();
-      const buffer = await sharp(Buffer.from(rawData.data), {
-        raw: {
-          width: rawData.width,
-          height: rawData.height,
-          channels: 4
-        }
-      }).png().toBuffer();
-      return buffer;
+      const bitmap = Buffer.from(rawData.data);
+      const imageFromBitmap = nativeImage.createFromBitmap(bitmap, {
+        width: rawData.width,
+        height: rawData.height,
+        scaleFactor: 1,
+      });
+      if (imageFromBitmap.isEmpty()) {
+        throw new Error('Failed to convert screenshot bitmap to PNG');
+      }
+      return imageFromBitmap.toPNG();
     } catch (error) {
       logger.error({ err: error, region }, 'Failed to capture screenshot');
       throw error;

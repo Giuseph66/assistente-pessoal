@@ -4,7 +4,7 @@ import type {
   STTFinalEvent,
   STTPartialEvent,
   STTStatus,
-} from '@ricky/shared';
+} from '@neo/shared';
 
 export type LiveTranscriptionProviderConfig = STTConfig & {
   apiKey?: string;

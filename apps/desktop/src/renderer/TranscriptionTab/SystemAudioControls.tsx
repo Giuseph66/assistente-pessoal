@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { SystemAudioSourceInfo } from '@ricky/shared';
+import { SystemAudioSourceInfo } from '@neo/shared';
 
 type Props = {
   sources: SystemAudioSourceInfo[];

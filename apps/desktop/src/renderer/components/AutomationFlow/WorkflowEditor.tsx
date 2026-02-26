@@ -4,23 +4,29 @@ import {
   MiniMap,
   Controls,
   Background,
+  BackgroundVariant,
   useNodesState,
   useEdgesState,
   addEdge,
   Connection,
+  DefaultEdgeOptions,
   Edge,
+  MarkerType,
   ReactFlowProvider,
   Node,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 
-import { WorkflowGraph, FlowNode, FlowEdge, AutomationNodeData, FlowExecutionStatus, FlowExecutionLog, MappingPoint, ImageTemplate } from '@ricky/shared';
+import { WorkflowGraph, FlowNode, FlowExecutionStatus, FlowExecutionLog, MappingPoint, ImageTemplate } from '@neo/shared';
 import { NodePalette, NodePropertiesPanel, FloatingToolbar, ExecutionMonitor } from './WorkflowComponents';
 import { StartNode } from './CustomNodes/StartNode';
 import { EndNode } from './CustomNodes/EndNode';
 import { ActionNode } from './CustomNodes/ActionNode';
 import { FindImageNode } from './CustomNodes/FindImageNode';
 import { LoopNode } from './CustomNodes/LoopNode';
+import { AIBrainNode } from './CustomNodes/AIBrainNode';
+import { FlowIcon } from './FlowIcons';
+import { WorkflowAgentChat } from './WorkflowAgentChat';
 
 import './WorkflowEditor.css';
 
@@ -40,6 +46,7 @@ const NODE_TYPES = {
   'action.screenshot': ActionNode,
   'condition.findImage': FindImageNode,
   'logic.loop': LoopNode,
+  'ai.brain': AIBrainNode,
 };
 
 const EDGE_TYPES = {
@@ -66,8 +73,105 @@ const DEFAULT_WORKFLOW: WorkflowGraph = {
   viewport: { x: 0, y: 0, zoom: 1 },
 };
 
+function slugifyWorkflowName(name: string): string {
+  return String(name || 'workflow')
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-zA-Z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .toLowerCase() || 'workflow';
+}
+
+function sanitizeForJson(value: unknown): unknown {
+  if (value === undefined) return null;
+  if (value === null) return null;
+  if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') return value;
+  if (Array.isArray(value)) return value.map((item) => sanitizeForJson(item));
+  if (typeof value === 'object') {
+    const out: Record<string, unknown> = {};
+    Object.entries(value as Record<string, unknown>).forEach(([key, item]) => {
+      const normalized = sanitizeForJson(item);
+      if (normalized !== undefined) out[key] = normalized;
+    });
+    return out;
+  }
+  return String(value);
+}
+
+function buildAiFriendlyExport(graph: WorkflowGraph) {
+  const nodes = Array.isArray(graph.nodes) ? graph.nodes : [];
+  const edges = Array.isArray(graph.edges) ? graph.edges : [];
+  const sortedNodes = [...nodes].sort((a, b) => String(a.id).localeCompare(String(b.id)));
+  const sortedEdges = [...edges].sort((a, b) => String(a.id).localeCompare(String(b.id)));
+  const startNodeIds = sortedNodes.filter((node: any) => node.type === 'start').map((node: any) => node.id);
+
+  const outgoingByNode = new Map<string, Array<{
+    edgeId: string;
+    sourceHandle: string;
+    targetId: string;
+    targetHandle?: string;
+  }>>();
+
+  sortedEdges.forEach((edge: any) => {
+    const source = String(edge.source || '');
+    if (!source) return;
+    const list = outgoingByNode.get(source) || [];
+    list.push({
+      edgeId: String(edge.id || ''),
+      sourceHandle: String(edge.sourceHandle || 'OUT'),
+      targetId: String(edge.target || ''),
+      targetHandle: edge.targetHandle ? String(edge.targetHandle) : undefined,
+    });
+    outgoingByNode.set(source, list);
+  });
+
+  const steps = sortedNodes.map((node: any) => {
+    const nodeType = String(node?.data?.nodeType || node.type || '');
+    const nodeData = sanitizeForJson(node?.data?.data || {});
+    const outgoing = (outgoingByNode.get(String(node.id)) || []).map((link) => ({
+      route: link.sourceHandle,
+      targetNodeId: link.targetId,
+      targetHandle: link.targetHandle || null,
+    }));
+
+    return {
+      id: String(node.id || ''),
+      type: String(node.type || ''),
+      nodeType,
+      position: {
+        x: Number(node?.position?.x || 0),
+        y: Number(node?.position?.y || 0),
+      },
+      config: nodeData,
+      outgoing,
+    };
+  });
+
+  return {
+    format: 'neo.ai_flow.v1',
+    exportedAt: new Date().toISOString(),
+    workflow: {
+      id: graph.id,
+      name: graph.name,
+      schemaVersion: graph.schemaVersion,
+      version: graph.version,
+      createdAt: graph.createdAt,
+      updatedAt: graph.updatedAt,
+    },
+    entrypoints: startNodeIds,
+    steps,
+    rawGraph: sanitizeForJson({
+      nodes: sortedNodes,
+      edges: sortedEdges,
+      viewport: graph.viewport,
+      settingsOverride: graph.settingsOverride || null,
+    }),
+  };
+}
+
 function FlowEditorContent({ workflow = DEFAULT_WORKFLOW, onBack }: WorkflowEditorProps) {
   const safeWorkflow = workflow || DEFAULT_WORKFLOW;
+  const [workflowName, setWorkflowName] = useState(safeWorkflow.name);
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>(safeWorkflow.nodes as any);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>(safeWorkflow.edges as any);
   const [selectedNode, setSelectedNode] = useState<FlowNode | null>(null);
@@ -75,10 +179,51 @@ function FlowEditorContent({ workflow = DEFAULT_WORKFLOW, onBack }: WorkflowEdit
   const [testStatus, setTestStatus] = useState<FlowExecutionStatus | null>(null);
   const [validation, setValidation] = useState<{ errors: any[]; warnings: any[] }>({ errors: [], warnings: [] });
   const [isFullscreen, setIsFullscreen] = useState(false); // Default to false to respect WindowControls
+  const [isAgentOpen, setIsAgentOpen] = useState(false);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; node: Node } | null>(null);
 
   const reactFlowWrapper = useRef<HTMLDivElement>(null);
   const [reactFlowInstance, setReactFlowWrapper] = useState<any>(null);
+  const defaultEdgeOptions = useMemo<DefaultEdgeOptions>(
+    () => ({
+      type: 'default',
+      interactionWidth: 28,
+      markerEnd: {
+        type: MarkerType.ArrowClosed,
+        color: '#60a5fa',
+        width: 20,
+        height: 20,
+      },
+      style: {
+        stroke: '#60a5fa',
+        strokeWidth: 2.2,
+      },
+    }),
+    []
+  );
+  const connectionLineStyle = useMemo(
+    () => ({
+      stroke: '#60a5fa',
+      strokeWidth: 2.2,
+      strokeOpacity: 0.95,
+    }),
+    []
+  );
+
+  useEffect(() => {
+    setWorkflowName(safeWorkflow.name || 'Workflow');
+  }, [safeWorkflow.id, safeWorkflow.name]);
+
+  const buildCurrentGraph = useCallback((): WorkflowGraph => {
+    return {
+      ...safeWorkflow,
+      name: workflowName,
+      nodes: nodes as any,
+      edges: edges as any,
+      viewport: reactFlowInstance ? reactFlowInstance.getViewport() : safeWorkflow.viewport,
+      updatedAt: Date.now(),
+    };
+  }, [safeWorkflow, workflowName, nodes, edges, reactFlowInstance]);
 
   // Sync execution status highlight
   useEffect(() => {
@@ -115,18 +260,12 @@ function FlowEditorContent({ workflow = DEFAULT_WORKFLOW, onBack }: WorkflowEdit
   // Autosave
   useEffect(() => {
     const timer = setTimeout(async () => {
-      const graph: WorkflowGraph = {
-        ...safeWorkflow,
-        nodes: nodes as any,
-        edges: edges as any,
-        viewport: reactFlowInstance ? reactFlowInstance.getViewport() : safeWorkflow.viewport,
-        updatedAt: Date.now(),
-      };
+      const graph = buildCurrentGraph();
       await window.automation.flow.saveWorkflow(graph);
     }, 1000);
 
     return () => clearTimeout(timer);
-  }, [nodes, edges, workflow, reactFlowInstance]);
+  }, [buildCurrentGraph, workflow]);
 
   const onConnect = useCallback(
     (params: Connection) => {
@@ -177,6 +316,24 @@ function FlowEditorContent({ workflow = DEFAULT_WORKFLOW, onBack }: WorkflowEdit
         }
         if (t === 'logic.loop') {
           return { mode: 'count', count: 1, maxIterations: 10 };
+        }
+        if (t === 'ai.brain') {
+          return {
+            instruction: [
+              'Você é um nó orquestrador de automação.',
+              'Responda SOMENTE em JSON válido, sem markdown.',
+              'Formato obrigatório:',
+              '{"route":"OUT","toolCalls":[{"channel":"automation.wait","args":{"ms":300}}],"message":"opcional","memoryPatch":"opcional"}',
+              'A route deve ser uma rota válida configurada no nó, ou ERROR.',
+            ].join('\n'),
+            contextTemplate: '',
+            inputMode: 'hybrid',
+            captureScope: 'fullscreen',
+            routes: ['OUT', 'YES', 'NO'],
+            defaultRoute: 'OUT',
+            toolChannels: ['*'],
+            failSafeMaxToolCalls: 200,
+          };
         }
         if (t === 'action.wait') {
           return { ms: 1000 };
@@ -259,12 +416,7 @@ function FlowEditorContent({ workflow = DEFAULT_WORKFLOW, onBack }: WorkflowEdit
   };
 
   const handleValidate = async () => {
-    const graph: WorkflowGraph = {
-      ...safeWorkflow,
-      nodes: nodes as any,
-      edges: edges as any,
-      viewport: reactFlowInstance ? reactFlowInstance.getViewport() : safeWorkflow.viewport,
-    };
+    const graph = buildCurrentGraph();
     const result = await window.automation.flow.validateWorkflow(graph);
     setValidation(result);
     if (result.errors.length === 0 && result.warnings.length === 0) {
@@ -277,6 +429,48 @@ function FlowEditorContent({ workflow = DEFAULT_WORKFLOW, onBack }: WorkflowEdit
     // In a real scenario we'd check validation here
     window.automation.flow.runWorkflow(safeWorkflow.id);
   };
+
+  const handleExportAI = useCallback(async () => {
+    const graph = buildCurrentGraph();
+    const exported = buildAiFriendlyExport(graph);
+    const jsonText = JSON.stringify(exported, null, 2);
+    const filename = `${slugifyWorkflowName(graph.name)}.ai-flow.json`;
+
+    // Download JSON file
+    const blob = new Blob([jsonText], { type: 'application/json;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = filename;
+    anchor.click();
+    URL.revokeObjectURL(url);
+
+    // Also copy to clipboard for quick AI prompting
+    try {
+      await navigator.clipboard.writeText(jsonText);
+      alert(`Fluxo exportado como "${filename}" e copiado para clipboard.`);
+    } catch {
+      alert(`Fluxo exportado como "${filename}". (Clipboard indisponível neste ambiente)`);
+    }
+  }, [buildCurrentGraph]);
+
+  const handleApplyAgentProposal = useCallback(async (proposal: { workflowName?: string; nodes: Node[]; edges: Edge[] }) => {
+    const nextName = proposal.workflowName?.trim() || workflowName;
+    setNodes(proposal.nodes);
+    setEdges(proposal.edges);
+    setWorkflowName(nextName);
+
+    const graph: WorkflowGraph = {
+      ...safeWorkflow,
+      name: nextName,
+      nodes: proposal.nodes as any,
+      edges: proposal.edges as any,
+      viewport: reactFlowInstance ? reactFlowInstance.getViewport() : safeWorkflow.viewport,
+      updatedAt: Date.now(),
+    };
+    await window.automation.flow.saveWorkflow(graph);
+    setValidation({ errors: [], warnings: [] });
+  }, [workflowName, setNodes, setEdges, safeWorkflow, reactFlowInstance]);
 
   const handleCloseMonitor = useCallback(() => {
     setExecutionStatus(null);
@@ -326,20 +520,23 @@ function FlowEditorContent({ workflow = DEFAULT_WORKFLOW, onBack }: WorkflowEdit
         isFullscreen={isFullscreen}
         onValidate={handleValidate}
         onSave={async () => {
-          const graph: WorkflowGraph = {
-            ...safeWorkflow,
-            nodes: nodes as any,
-            edges: edges as any,
-            viewport: reactFlowInstance ? reactFlowInstance.getViewport() : safeWorkflow.viewport,
-            updatedAt: Date.now(),
-          };
+          const graph = buildCurrentGraph();
           await window.automation.flow.saveWorkflow(graph);
         }}
+        onExportAI={handleExportAI}
+        onToggleAgent={() => setIsAgentOpen((current) => !current)}
+        isAgentOpen={isAgentOpen}
         onRun={handleRun}
         isSaving={false} // TODO: Add saving state
       />
 
       <NodePalette />
+      <WorkflowAgentChat
+        isOpen={isAgentOpen}
+        workflow={buildCurrentGraph()}
+        onClose={() => setIsAgentOpen(false)}
+        onApplyProposal={handleApplyAgentProposal}
+      />
 
       <div className="workflow-canvas" ref={reactFlowWrapper}>
         <ReactFlow
@@ -360,11 +557,26 @@ function FlowEditorContent({ workflow = DEFAULT_WORKFLOW, onBack }: WorkflowEdit
           }}
           nodeTypes={NODE_TYPES}
           edgeTypes={EDGE_TYPES}
+          defaultEdgeOptions={defaultEdgeOptions}
+          connectionLineStyle={connectionLineStyle}
           fitView
           proOptions={{ hideAttribution: true }}
           onlyRenderVisibleElements={true}
         >
-          <Background color="#1e293b" gap={20} />
+          <Background
+            id="workflow-grid-fine"
+            variant={BackgroundVariant.Lines}
+            color="rgba(148, 163, 184, 0.16)"
+            gap={20}
+            size={1}
+          />
+          <Background
+            id="workflow-grid-major"
+            variant={BackgroundVariant.Lines}
+            color="rgba(96, 165, 250, 0.22)"
+            gap={100}
+            size={1.35}
+          />
           <Controls className="workflow-controls" />
           <MiniMap
             nodeStrokeColor="#6366f1"
@@ -389,28 +601,28 @@ function FlowEditorContent({ workflow = DEFAULT_WORKFLOW, onBack }: WorkflowEdit
           onClick={(event) => event.stopPropagation()}
         >
           <div style={{ fontSize: '11px', color: 'var(--workflow-text-secondary)', margin: '4px 8px 8px' }}>
-            {contextMenu.node.data?.nodeType || contextMenu.node.type}
+            {String((contextMenu.node.data as { nodeType?: string } | undefined)?.nodeType || contextMenu.node.type || '')}
           </div>
           <button
             className="btn-workflow"
             style={{ width: '100%', justifyContent: 'flex-start', marginBottom: '6px' }}
             onClick={() => handleCopyNode(contextMenu.node)}
           >
-            📋 Copiar
+            <FlowIcon name="copy" size={14} /> Copiar
           </button>
           <button
             className="btn-workflow"
             style={{ width: '100%', justifyContent: 'flex-start', marginBottom: '6px' }}
             onClick={() => handleEditNode(contextMenu.node)}
           >
-            ✏️ Editar
+            <FlowIcon name="edit" size={14} /> Editar
           </button>
           <button
             className="btn-workflow"
             style={{ width: '100%', justifyContent: 'flex-start', color: '#ef4444', borderColor: 'rgba(239, 68, 68, 0.3)' }}
             onClick={() => handleDeleteNode(contextMenu.node.id)}
           >
-            🗑️ Apagar
+            <FlowIcon name="trash" size={14} /> Apagar
           </button>
         </div>
       )}
@@ -421,7 +633,10 @@ function FlowEditorContent({ workflow = DEFAULT_WORKFLOW, onBack }: WorkflowEdit
         <div className="workflow-panel" style={{ position: 'absolute', bottom: '80px', left: '20px', width: '300px', zIndex: 10 }}>
           <h4 style={{ margin: '0 0 10px 0', fontSize: '12px', color: '#ef4444' }}>ERROS DE VALIDAÇÃO</h4>
           {validation.errors.map((err, i) => (
-            <div key={i} style={{ fontSize: '12px', color: '#ef4444', marginBottom: '4px' }}>❌ {err.message}</div>
+            <div key={i} style={{ fontSize: '12px', color: '#ef4444', marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <FlowIcon name="xCircle" size={13} />
+              <span>{err.message}</span>
+            </div>
           ))}
         </div>
       )}

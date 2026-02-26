@@ -1,6 +1,6 @@
 import { WebSocketServer, WebSocket } from 'ws';
-import { getLogger } from '@ricky/logger';
-import { IpcChannels } from '@ricky/shared';
+import { getLogger } from '@neo/logger';
+import { IpcChannels } from '@neo/shared';
 import { STTManager } from './stt/manager.js';
 
 const logger = getLogger({ appName: 'ricky-engine' });

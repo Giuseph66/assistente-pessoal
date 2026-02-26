@@ -1,4 +1,4 @@
-import { STTStatus } from '@ricky/shared';
+import { STTStatus } from '@neo/shared';
 
 const getLabel = (status: STTStatus): string => {
   switch (status.state) {

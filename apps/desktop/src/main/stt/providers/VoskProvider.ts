@@ -4,9 +4,9 @@ import { join, resolve } from 'path';
 import { existsSync } from 'fs';
 import { app } from 'electron';
 import { is } from '@electron-toolkit/utils';
-import { STTConfig, STTFinalEvent, STTPartialEvent, STTStatus } from '@ricky/shared';
+import { STTConfig, STTFinalEvent, STTPartialEvent, STTStatus } from '@neo/shared';
 import type { STTProvider } from './STTProvider';
-import { getLogger } from '@ricky/logger';
+import { getLogger } from '@neo/logger';
 import { fork, ChildProcess } from 'child_process';
 
 const logger = getLogger();

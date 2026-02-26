@@ -1,7 +1,7 @@
 import { spawn, spawnSync, ChildProcessWithoutNullStreams } from 'child_process';
 import { EventEmitter } from 'events';
 import type { AudioSource } from './AudioSource';
-import { getLogger } from '@ricky/logger';
+import { getLogger } from '@neo/logger';
 
 const logger = getLogger();
 
